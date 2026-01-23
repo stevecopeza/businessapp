@@ -1,0 +1,147 @@
+<div class="settings-content">
+
+  <!-- TABS -->
+  <div class="settings-tabs">
+    <button class="tab">General</button>
+    <button class="tab">Quote Settings</button>
+    <button class="tab">Templates</button>
+    <button class="tab active">Business Type</button>
+    <button class="tab">Data & Units</button>
+  </div>
+
+  <!-- GENERAL -->
+  <section class="settings-panel">
+    <h2>General Settings</h2>
+
+    <div class="form-grid">
+      <div>
+        <label>Business Name</label>
+        <input value="Main Repair Shop" />
+      </div>
+      <div>
+        <label>Contact Email</label>
+        <input value="info@mainrepair.com" />
+      </div>
+      <div>
+        <label>Phone Number</label>
+        <input value="+27 82 123 4567" />
+      </div>
+      <div>
+        <label>Default Currency</label>
+        <select>
+          <option>ZAR (R)</option>
+          <option>USD ($)</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUOTE SETTINGS -->
+  <section class="settings-panel">
+    <h2>Quote Settings</h2>
+
+    <div class="checklist">
+      <label><input type="checkbox" checked /> Require acceptance before job creation</label>
+      <label><input type="checkbox" /> Allow quote revisions</label>
+      <label><input type="checkbox" checked /> Show expiry date on quotes</label>
+    </div>
+
+    <div class="form-grid">
+      <div>
+        <label>Default Quote Expiry (days)</label>
+        <input value="14" />
+      </div>
+      <div>
+        <label>Tax Rate (%)</label>
+        <input value="15" />
+      </div>
+    </div>
+  </section>
+
+  <!-- TEMPLATES -->
+  <section class="settings-panel">
+    <h2>Quote Templates</h2>
+
+    <div class="list-box">
+      <div class="list-item">
+        <input type="checkbox" /> Bumper Replacement <span>$600</span>
+      </div>
+      <div class="list-item">
+        <input type="checkbox" /> Door Panel Repair <span>$400</span>
+      </div>
+      <div class="list-item">
+        <input type="checkbox" /> Quarter Panel Repair <span>$300</span>
+      </div>
+    </div>
+
+    <button class="link">+ Add Template</button>
+  </section>
+
+  <!-- BUSINESS TYPE -->
+  <section class="settings-panel">
+    <h2>Business Type Settings</h2>
+
+    <div class="form-row">
+      <label>Business Type</label>
+      <select>
+        <option>Panel Beater</option>
+        <option>Gardener</option>
+        <option>Tailor</option>
+      </select>
+    </div>
+
+    <div class="two-column">
+
+      <div class="card">
+        <h3>Vehicle Fields</h3>
+        <label><input type="checkbox" checked /> Make</label>
+        <label><input type="checkbox" checked /> Model</label>
+        <label><input type="checkbox" checked /> VIN</label>
+        <label><input type="checkbox" checked /> Year</label>
+        <label><input type="checkbox" /> Colour</label>
+      </div>
+
+      <div class="card">
+        <h3>Default Options</h3>
+        <label><input type="checkbox" /> Bumper Unit</label>
+        <label><input type="checkbox" /> Paint Area (m²)</label>
+        <label><input type="checkbox" /> Material Finish</label>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- DATA & UNITS -->
+  <section class="settings-panel">
+    <h2>Data & Units</h2>
+
+    <div class="form-grid">
+      <div>
+        <label>Length Unit</label>
+        <select>
+          <option>Millimeters</option>
+          <option>Inches</option>
+        </select>
+      </div>
+      <div>
+        <label>Area Unit</label>
+        <select>
+          <option>Square meters</option>
+          <option>Square feet</option>
+        </select>
+      </div>
+      <div>
+        <label>Weight Unit</label>
+        <select>
+          <option>Kilograms</option>
+          <option>Pounds</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button class="primary">Save Changes</button>
+  </div>
+
+</div>

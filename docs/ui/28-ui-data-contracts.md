@@ -1,0 +1,1 @@
+UI data contracts as previously provided.

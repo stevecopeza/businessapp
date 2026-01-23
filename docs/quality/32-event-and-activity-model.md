@@ -1,0 +1,1 @@
+Event and activity model as previously provided.

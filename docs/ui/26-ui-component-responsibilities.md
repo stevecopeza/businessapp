@@ -1,0 +1,1 @@
+Component responsibility boundaries as previously provided.

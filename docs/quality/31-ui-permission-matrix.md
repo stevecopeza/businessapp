@@ -1,0 +1,1 @@
+UI permission matrix as previously provided.

@@ -1,0 +1,1 @@
+Error handling philosophy as previously provided.
