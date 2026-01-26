@@ -11,6 +11,14 @@
     }
     
     const activeSchema = window.businessappData ? window.businessappData.active_schema : null;
+    const workflowSettings = window.businessappData && window.businessappData.settings && window.businessappData.settings.workflow ? window.businessappData.settings.workflow : {};
+    const quoteStatuses = workflowSettings.quote || {
+        'draft': 'New',
+        'sent': 'Sent',
+        'edited': 'Edited',
+        'accepted': 'Accepted',
+        'rejected': 'Rejected'
+    };
 
     const QuotesApp = () => {
         const [view, setView] = useState('list');
@@ -192,7 +200,7 @@
                             ),
                             el('td', null, quote.customer_name || 'Unknown'),
                             el('td', { style: { textAlign: 'right' } }, `$${Number(quote.total_amount).toFixed(2)}`),
-                            el('td', null, el('span', { className: `businessapp-badge ${quote.status}` }, quote.status)),
+                            el('td', null, el('span', { className: `businessapp-badge ${quote.status}` }, quoteStatuses[quote.status] || quote.status)),
                             el('td', null, quote.created_at ? new Date(quote.created_at).toLocaleDateString() : '-'),
                             el('td', null,
                                 el(Button, { isSmall: true, isSecondary: true, onClick: () => onView(quote), style: { marginRight: '5px' } }, 'View'),
@@ -378,7 +386,7 @@
             el('div', { style: { background: '#fff', padding: '20px', border: '1px solid #c3c4c7', maxWidth: '800px' } },
                 el('div', { style: { borderBottom: '1px solid #eee', paddingBottom: '10px', marginBottom: '20px' } },
                     el('h2', { style: { marginTop: 0 } }, quote.title),
-                    el('span', { className: `businessapp-badge ${quote.status}` }, quote.status)
+                    el('span', { className: `businessapp-badge ${quote.status}` }, quoteStatuses[quote.status] || quote.status)
                 ),
                 el('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' } },
                     el('div', null,

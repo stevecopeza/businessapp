@@ -11,12 +11,15 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('BUSINESSAPP_DB_VERSION', '9');
+define('BUSINESSAPP_DB_VERSION', '10');
 
 require_once __DIR__ . '/includes/Domain/Quote.php';
 require_once __DIR__ . '/includes/Domain/QuoteItem.php';
+require_once __DIR__ . '/includes/Domain/Invoice.php';
+require_once __DIR__ . '/includes/Domain/InvoiceItem.php';
 require_once __DIR__ . '/includes/Domain/Job.php';
 require_once __DIR__ . '/includes/Domain/JobItem.php';
+require_once __DIR__ . '/includes/Domain/Payment.php';
 require_once __DIR__ . '/includes/Domain/Customer.php';
 require_once __DIR__ . '/includes/Domain/CustomerEntity.php';
 require_once __DIR__ . '/includes/Domain/QuoteFactory.php';
@@ -26,8 +29,11 @@ require_once __DIR__ . '/includes/Domain/BusinessType.php';
 require_once __DIR__ . '/includes/Domain/BusinessTypeRegistry.php';
 require_once __DIR__ . '/includes/Infrastructure/QuoteRepository.php';
 require_once __DIR__ . '/includes/Infrastructure/QuoteItemRepository.php';
+require_once __DIR__ . '/includes/Infrastructure/InvoiceRepository.php';
+require_once __DIR__ . '/includes/Infrastructure/InvoiceItemRepository.php';
 require_once __DIR__ . '/includes/Infrastructure/JobRepository.php';
 require_once __DIR__ . '/includes/Infrastructure/JobItemRepository.php';
+require_once __DIR__ . '/includes/Infrastructure/PaymentRepository.php';
 require_once __DIR__ . '/includes/Infrastructure/CustomerRepository.php';
 require_once __DIR__ . '/includes/Infrastructure/CustomerEntityRepository.php';
 
@@ -35,8 +41,11 @@ use BusinessApp\Domain\QuoteFactory;
 use BusinessApp\Domain\BusinessTypeRegistry;
 use BusinessApp\Infrastructure\QuoteItemRepository;
 use BusinessApp\Infrastructure\QuoteRepository;
+use BusinessApp\Infrastructure\InvoiceRepository;
+use BusinessApp\Infrastructure\InvoiceItemRepository;
 use BusinessApp\Infrastructure\JobRepository;
 use BusinessApp\Infrastructure\JobItemRepository;
+use BusinessApp\Infrastructure\PaymentRepository;
 use BusinessApp\Infrastructure\CustomerRepository;
 use BusinessApp\Infrastructure\CustomerEntityRepository;
 
@@ -46,8 +55,11 @@ final class BusinessApp_Plugin
     private $quoteFactory;
     private $quoteRepository;
     private $quoteItemRepository;
+    private $invoiceRepository;
+    private $invoiceItemRepository;
     private $jobRepository;
     private $jobItemRepository;
+    private $paymentRepository;
     private $customerRepository;
     private $customerEntityRepository;
     private $businessTypeRegistry;
@@ -69,8 +81,11 @@ final class BusinessApp_Plugin
         $this->quoteFactory = new QuoteFactory($this->businessTypeRegistry);
         $this->quoteItemRepository = new QuoteItemRepository($wpdb, $wpdb->prefix . 'businessapp_quote_items');
         $this->quoteRepository = new QuoteRepository($wpdb, $wpdb->prefix . 'businessapp_quotes', $this->quoteItemRepository);
+        $this->invoiceItemRepository = new InvoiceItemRepository($wpdb, $wpdb->prefix . 'businessapp_invoice_items');
+        $this->invoiceRepository = new InvoiceRepository($wpdb, $wpdb->prefix . 'businessapp_invoices', $this->invoiceItemRepository);
         $this->jobItemRepository = new JobItemRepository($wpdb, $wpdb->prefix . 'businessapp_job_items');
         $this->jobRepository = new JobRepository($wpdb, $wpdb->prefix . 'businessapp_jobs', $this->jobItemRepository);
+        $this->paymentRepository = new PaymentRepository($wpdb, $wpdb->prefix . 'businessapp_payments');
         $this->customerRepository = new CustomerRepository();
         $this->customerEntityRepository = new CustomerEntityRepository();
 
@@ -81,6 +96,7 @@ final class BusinessApp_Plugin
         add_action('wp_enqueue_scripts', [$this, 'enqueue_frontend_assets']);
         add_shortcode('businessapp_app', [$this, 'render_frontend_app']);
         add_action('template_redirect', [$this, 'maybe_render_public_quote']);
+        add_action('template_redirect', [$this, 'maybe_render_public_invoice']);
 
         $this->maybe_upgrade_schema();
     }
@@ -93,6 +109,16 @@ final class BusinessApp_Plugin
             [
                 'methods'             => 'GET',
                 'callback'            => [$this, 'handle_health_check'],
+                'permission_callback' => '__return_true',
+            ]
+        );
+
+        register_rest_route(
+            'businessapp/v1',
+            '/create-payment-intent',
+            [
+                'methods'             => 'POST',
+                'callback'            => [$this, 'handle_create_payment_intent'],
                 'permission_callback' => '__return_true',
             ]
         );
@@ -217,6 +243,16 @@ final class BusinessApp_Plugin
                 'permission_callback' => function () {
                     return current_user_can('edit_posts');
                 },
+            ]
+        );
+
+        register_rest_route(
+            'businessapp/v1',
+            '/create-payment-intent',
+            [
+                'methods'             => 'POST',
+                'callback'            => [$this, 'handle_create_payment_intent'],
+                'permission_callback' => '__return_true',
             ]
         );
 
@@ -548,6 +584,15 @@ final class BusinessApp_Plugin
             [$this, 'render_jobs_page']
         );
 
+        $invoicesPage = add_submenu_page(
+            'businessapp-dashboard',
+            'Invoices',
+            'Invoices',
+            'manage_options',
+            'businessapp-invoices',
+            [$this, 'render_invoices_page']
+        );
+
         $customersPage = add_submenu_page(
             'businessapp-dashboard',
             'Customers',
@@ -578,6 +623,7 @@ final class BusinessApp_Plugin
         add_action('admin_print_styles-' . $dashboardPage, [$this, 'enqueue_dashboard_assets']);
         add_action('admin_print_styles-' . $quotesPage, [$this, 'enqueue_quotes_assets']);
         add_action('admin_print_styles-' . $jobsPage, [$this, 'enqueue_jobs_assets']);
+        add_action('admin_print_styles-' . $invoicesPage, [$this, 'enqueue_dashboard_assets']);
         add_action('admin_print_styles-' . $customersPage, [$this, 'enqueue_customers_assets']);
         add_action('admin_print_styles-' . $settingsPage, [$this, 'enqueue_settings_assets']);
         add_action('admin_print_styles-' . $analyticsPage, [$this, 'enqueue_dashboard_assets']);
@@ -873,6 +919,21 @@ final class BusinessApp_Plugin
             KEY job_id (job_id)
         ) {$charsetCollate};";
 
+        $paymentsTable = $wpdb->prefix . 'businessapp_payments';
+        $paymentsSql = "CREATE TABLE {$paymentsTable} (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            invoice_id BIGINT(20) UNSIGNED NOT NULL,
+            gateway VARCHAR(50) NOT NULL DEFAULT '',
+            transaction_id VARCHAR(255) NOT NULL DEFAULT '',
+            amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+            currency VARCHAR(10) NOT NULL DEFAULT 'USD',
+            status VARCHAR(20) NOT NULL DEFAULT 'completed',
+            meta JSON DEFAULT NULL,
+            created_at DATETIME NOT NULL,
+            PRIMARY KEY  (id),
+            KEY invoice_id (invoice_id)
+        ) {$charsetCollate};";
+
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
         dbDelta($sql);
@@ -882,6 +943,7 @@ final class BusinessApp_Plugin
         dbDelta($entitiesSql);
         dbDelta($jobsSql);
         dbDelta($jobItemsSql);
+        dbDelta($paymentsSql);
     }
 
     public function handle_create_quote($request)
@@ -1743,6 +1805,180 @@ final class BusinessApp_Plugin
         <?php
     }
 
+    public function render_invoices_page()
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Access denied');
+        }
+
+        // Handle Payment Submission
+        $successMessage = '';
+        $errorMessage = '';
+        if (isset($_POST['action']) && $_POST['action'] === 'businessapp_manual_payment') {
+            check_admin_referer('businessapp_manual_payment');
+            
+            $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
+            $amount = isset($_POST['amount']) ? (float) $_POST['amount'] : 0.0;
+            $method = isset($_POST['method']) ? sanitize_text_field($_POST['method']) : 'cash';
+            $reference = isset($_POST['reference']) ? sanitize_text_field($_POST['reference']) : '';
+            
+            if ($invoiceId > 0 && $amount > 0) {
+                $invoice = $this->invoiceRepository->getById($invoiceId);
+                if ($invoice) {
+                    $payment = new \BusinessApp\Domain\Payment(
+                        0, // ID auto-generated
+                        $invoiceId,
+                        'manual', // gateway
+                        $reference, // transaction_id
+                        $amount,
+                        'USD', // Default currency
+                        'completed',
+                        ['method' => $method], // meta
+                        date('Y-m-d H:i:s')
+                    );
+                    
+                    $this->paymentRepository->save($payment);
+                    
+                    if ($amount >= $invoice->getTotalAmount()) {
+                        $invoice->setStatus('paid');
+                        $this->invoiceRepository->save($invoice);
+                    }
+                    
+                    $successMessage = 'Payment recorded successfully.';
+                } else {
+                    $errorMessage = 'Invoice not found.';
+                }
+            } else {
+                $errorMessage = 'Invalid payment details.';
+            }
+        }
+
+        $invoices = $this->invoiceRepository->getAll();
+        
+        ?>
+        <div class="businessapp-dashboard-wrap">
+            <div class="businessapp-dashboard-header">
+                <h1>Invoices</h1>
+            </div>
+            
+            <?php if ($successMessage): ?>
+                <div class="notice notice-success is-dismissible"><p><?php echo esc_html($successMessage); ?></p></div>
+            <?php endif; ?>
+            
+            <?php if ($errorMessage): ?>
+                <div class="notice notice-error is-dismissible"><p><?php echo esc_html($errorMessage); ?></p></div>
+            <?php endif; ?>
+
+            <div class="businessapp-section-card">
+                <div class="businessapp-section-content">
+                    <table class="wp-list-table widefat fixed striped">
+                        <thead>
+                            <tr>
+                                <th>Invoice #</th>
+                                <th>Customer</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th>Amount</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($invoices)): ?>
+                                <tr><td colspan="6">No invoices found.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($invoices as $invoice): ?>
+                                    <?php 
+                                        $customer = $this->customerRepository->getById($invoice->getCustomerId());
+                                        $customerName = $customer ? $customer->getName() : 'Unknown';
+                                    ?>
+                                    <tr>
+                                        <td><?php echo esc_html($invoice->getId()); ?></td>
+                                        <td><?php echo esc_html($customerName); ?></td>
+                                        <td><?php echo esc_html($invoice->getCreatedAt()); ?></td>
+                                        <td>
+                                            <span class="businessapp-badge status-<?php echo esc_attr($invoice->getStatus()); ?>">
+                                                <?php echo esc_html(ucfirst($invoice->getStatus())); ?>
+                                            </span>
+                                        </td>
+                                        <td>$<?php echo esc_html(number_format($invoice->getTotalAmount(), 2)); ?></td>
+                                        <td>
+                                            <?php if ($invoice->getStatus() !== 'paid'): ?>
+                                                <button type="button" class="button button-small businessapp-record-payment-btn" 
+                                                    data-invoice-id="<?php echo esc_attr($invoice->getId()); ?>"
+                                                    data-amount="<?php echo esc_attr($invoice->getTotalAmount()); ?>"
+                                                    >Record Payment</button>
+                                            <?php endif; ?>
+                                            <a href="<?php echo esc_url(site_url('?businessapp_invoice_token=' . $invoice->getPublicToken())); ?>" target="_blank" class="button button-small">View</a>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Payment Modal -->
+            <div id="businessapp-payment-modal" class="businessapp-modal" style="display:none;">
+                <div class="businessapp-modal-content">
+                    <div class="businessapp-modal-header">
+                        <h3>Record Payment</h3>
+                        <span class="businessapp-modal-close">&times;</span>
+                    </div>
+                    <form method="post" action="">
+                        <?php wp_nonce_field('businessapp_manual_payment'); ?>
+                        <input type="hidden" name="action" value="businessapp_manual_payment">
+                        <input type="hidden" name="invoice_id" id="payment_invoice_id">
+                        
+                        <div class="businessapp-modal-body">
+                            <div class="businessapp-form-group">
+                                <label for="payment_amount">Amount ($)</label>
+                                <input type="number" id="payment_amount" name="amount" step="0.01" min="0" required>
+                            </div>
+                            
+                            <div class="businessapp-form-group">
+                                <label for="payment_method">Payment Method</label>
+                                <select id="payment_method" name="method">
+                                    <option value="cash">Cash</option>
+                                    <option value="check">Check</option>
+                                    <option value="bank_transfer">Bank Transfer</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            
+                            <div class="businessapp-form-group">
+                                <label for="payment_reference">Reference / Note</label>
+                                <input type="text" id="payment_reference" name="reference" placeholder="e.g. Check #123">
+                            </div>
+                        </div>
+                        
+                        <div class="businessapp-modal-footer">
+                            <button type="button" class="businessapp-btn-secondary businessapp-modal-cancel">Cancel</button>
+                            <button type="submit" class="businessapp-btn-primary">Record Payment</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <script>
+                jQuery(document).ready(function($) {
+                    $('.businessapp-record-payment-btn').on('click', function() {
+                        var invoiceId = $(this).data('invoice-id');
+                        var amount = $(this).data('amount');
+                        $('#payment_invoice_id').val(invoiceId);
+                        $('#payment_amount').val(amount);
+                        $('#businessapp-payment-modal').fadeIn();
+                    });
+                    
+                    $('.businessapp-modal-close, .businessapp-modal-cancel').on('click', function() {
+                        $('#businessapp-payment-modal').fadeOut();
+                    });
+                });
+            </script>
+        </div>
+        <?php
+    }
+
     public function render_customers_page()
     {
         if (!current_user_can('manage_options')) {
@@ -1857,6 +2093,7 @@ final class BusinessApp_Plugin
         // Load all settings
         $generalSettings = get_option('businessapp_settings_general', []);
         $businessTypeSettings = get_option('businessapp_settings_business_type', []);
+        $paymentSettings = get_option('businessapp_settings_payments', []);
 
         // Extract general settings with defaults
         $businessName = isset($generalSettings['business_name']) ? $generalSettings['business_name'] : 'Main Repair Shop';
@@ -1876,6 +2113,10 @@ final class BusinessApp_Plugin
         // Extract business type settings
         $businessType = isset($businessTypeSettings['business_type']) ? $businessTypeSettings['business_type'] : 'panel_beater';
         
+        // Extract payment settings
+        $stripePublishableKey = isset($paymentSettings['stripe_publishable_key']) ? $paymentSettings['stripe_publishable_key'] : '';
+        $stripeSecretKey = isset($paymentSettings['stripe_secret_key']) ? $paymentSettings['stripe_secret_key'] : '';
+        
         ?>
         <div class="businessapp-settings-wrap">
             <div class="businessapp-settings-header">
@@ -1884,6 +2125,7 @@ final class BusinessApp_Plugin
 
             <div class="businessapp-tabs">
                 <a href="#" class="businessapp-tab <?php echo $activeTab === 'general' ? 'active' : ''; ?>" data-tab="general">General</a>
+                <a href="#" class="businessapp-tab <?php echo $activeTab === 'payments' ? 'active' : ''; ?>" data-tab="payments">Payments</a>
                 <a href="#" class="businessapp-tab <?php echo $activeTab === 'quote-settings' ? 'active' : ''; ?>" data-tab="quote-settings">Quote Settings</a>
                 <a href="#" class="businessapp-tab <?php echo $activeTab === 'templates' ? 'active' : ''; ?>" data-tab="templates">Templates</a>
                 <a href="#" class="businessapp-tab <?php echo $activeTab === 'business-type' ? 'active' : ''; ?>" data-tab="business-type">Business Type</a>
@@ -2012,6 +2254,26 @@ final class BusinessApp_Plugin
                                 <div class="businessapp-field full-width">
                                     <label for="default_note">Default Note on Quotes & Invoices:</label>
                                     <textarea id="default_note" name="default_note"><?php echo esc_textarea($defaultNote); ?></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Payments Tab -->
+                    <div id="businessapp-tab-payments" class="businessapp-tab-content" style="display:none;">
+                        <div class="businessapp-section">
+                            <h2 class="businessapp-section-title">Stripe Settings</h2>
+                            <p class="businessapp-text-muted">Configure your Stripe keys to enable online payments.</p>
+                            
+                            <div class="businessapp-form-grid">
+                                <div class="businessapp-field full-width">
+                                    <label for="stripe_publishable_key">Publishable Key:</label>
+                                    <input type="text" id="stripe_publishable_key" name="stripe_publishable_key" value="<?php echo esc_attr($stripePublishableKey); ?>" placeholder="pk_test_..." />
+                                </div>
+
+                                <div class="businessapp-field full-width">
+                                    <label for="stripe_secret_key">Secret Key:</label>
+                                    <input type="password" id="stripe_secret_key" name="stripe_secret_key" value="<?php echo esc_attr($stripeSecretKey); ?>" placeholder="sk_test_..." />
                                 </div>
                             </div>
                         </div>
@@ -2180,6 +2442,19 @@ final class BusinessApp_Plugin
 
         update_option('businessapp_settings_general', $generalSettings);
 
+        // Save Payment Settings
+        $paymentSettings = [];
+        
+        if (isset($_POST['stripe_publishable_key'])) {
+            $paymentSettings['stripe_publishable_key'] = sanitize_text_field(wp_unslash($_POST['stripe_publishable_key']));
+        }
+        
+        if (isset($_POST['stripe_secret_key'])) {
+            $paymentSettings['stripe_secret_key'] = sanitize_text_field(wp_unslash($_POST['stripe_secret_key']));
+        }
+        
+        update_option('businessapp_settings_payments', $paymentSettings);
+
         // Save Business Type Settings
         $businessTypeSettings = [];
         
@@ -2257,6 +2532,281 @@ final class BusinessApp_Plugin
         );
 
         wp_safe_redirect($redirectUrl);
+        exit;
+    }
+
+    public function handle_create_payment_intent($request)
+    {
+        $params = $request->get_json_params();
+        $token = isset($params['public_token']) ? sanitize_text_field($params['public_token']) : '';
+        
+        if (!$token) {
+            return new \WP_Error('missing_token', 'Missing public token', ['status' => 400]);
+        }
+        
+        $invoice = $this->invoiceRepository->findByPublicToken($token);
+        
+        if (!$invoice) {
+            return new \WP_Error('not_found', 'Invoice not found', ['status' => 404]);
+        }
+        
+        $paymentSettings = get_option('businessapp_settings_payments', []);
+        $secretKey = isset($paymentSettings['stripe_secret_key']) ? $paymentSettings['stripe_secret_key'] : '';
+        
+        if (!$secretKey) {
+            return new \WP_Error('configuration_error', 'Stripe is not configured', ['status' => 500]);
+        }
+        
+        // Calculate amount in cents
+        $amount = (int) ($invoice->getTotalAmount() * 100);
+        $currency = 'usd'; // Default to USD
+        
+        $body = [
+            'amount' => $amount,
+            'currency' => $currency,
+            'metadata' => [
+                'invoice_id' => $invoice->getId(),
+                'customer_id' => $invoice->getCustomerId(),
+            ],
+            'automatic_payment_methods' => ['enabled' => 'true'],
+        ];
+        
+        $response = wp_remote_post('https://api.stripe.com/v1/payment_intents', [
+            'headers' => [
+                'Authorization' => 'Bearer ' . $secretKey,
+                'Content-Type' => 'application/x-www-form-urlencoded',
+            ],
+            'body' => http_build_query($body),
+        ]);
+        
+        if (is_wp_error($response)) {
+            return $response;
+        }
+        
+        $responseBody = json_decode(wp_remote_retrieve_body($response), true);
+        
+        if (isset($responseBody['error'])) {
+            return new \WP_Error('stripe_error', $responseBody['error']['message'], ['status' => 400]);
+        }
+        
+        return rest_ensure_response([
+            'clientSecret' => $responseBody['client_secret'],
+            'publishableKey' => isset($paymentSettings['stripe_publishable_key']) ? $paymentSettings['stripe_publishable_key'] : '',
+        ]);
+    }
+
+    public function maybe_render_public_invoice()
+    {
+        if (!isset($_GET['businessapp_invoice_token'])) {
+            return;
+        }
+
+        $token = sanitize_text_field(wp_unslash($_GET['businessapp_invoice_token']));
+        $invoice = $this->invoiceRepository->findByPublicToken($token);
+
+        if (!$invoice) {
+            status_header(404);
+            nocache_headers();
+            echo '<!doctype html><html><head><meta charset="utf-8"><title>Invoice not found</title></head><body><h1>Invoice not found</h1><p>The invoice link is invalid or has expired.</p></body></html>';
+            exit;
+        }
+
+        $paymentSettings = get_option('businessapp_settings_payments', []);
+
+        // Handle Payment Success Return
+        if (isset($_GET['payment_intent']) && isset($_GET['payment_intent_client_secret']) && isset($_GET['payment_success'])) {
+            $paymentIntentId = sanitize_text_field($_GET['payment_intent']);
+            $secretKey = isset($paymentSettings['stripe_secret_key']) ? $paymentSettings['stripe_secret_key'] : '';
+
+            if ($secretKey) {
+                // Verify with Stripe
+                $response = wp_remote_get('https://api.stripe.com/v1/payment_intents/' . $paymentIntentId, [
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . $secretKey,
+                    ]
+                ]);
+
+                if (!is_wp_error($response)) {
+                    $body = json_decode(wp_remote_retrieve_body($response), true);
+                    if (isset($body['status']) && $body['status'] === 'succeeded') {
+                        // Check if already recorded
+                        $existingPayments = $this->paymentRepository->getByInvoiceId($invoice->getId());
+                        $alreadyRecorded = false;
+                        foreach ($existingPayments as $p) {
+                            if ($p->getTransactionId() === $paymentIntentId) {
+                                $alreadyRecorded = true;
+                                break;
+                            }
+                        }
+
+                        if (!$alreadyRecorded) {
+                            // Create Payment Record
+                            $amount = $body['amount_received'] / 100; // Cents to Dollars
+                            $payment = new \BusinessApp\Domain\Payment(
+                                0,
+                                $invoice->getId(),
+                                'stripe',
+                                $paymentIntentId,
+                                $amount,
+                                strtoupper($body['currency']),
+                                'completed',
+                                ['method' => 'card'],
+                                date('Y-m-d H:i:s')
+                            );
+                            
+                            $this->paymentRepository->save($payment);
+                            
+                            // Update Invoice
+                            if ($amount >= $invoice->getTotalAmount()) {
+                                $invoice->setStatus('paid');
+                                $this->invoiceRepository->save($invoice);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        $publishableKey = isset($paymentSettings['stripe_publishable_key']) ? $paymentSettings['stripe_publishable_key'] : '';
+        $isStripeEnabled = !empty($publishableKey) && !empty($paymentSettings['stripe_secret_key']);
+        $items = $this->invoiceItemRepository->getItemsForInvoice($invoice->getId());
+
+        status_header(200);
+        nocache_headers();
+        
+        echo '<!doctype html>';
+        echo '<html>';
+        echo '<head>';
+        echo '<meta charset="utf-8" />';
+        echo '<title>Invoice #' . esc_html($invoice->getId()) . '</title>';
+        echo '<meta name="viewport" content="width=device-width, initial-scale=1" />';
+        if ($isStripeEnabled && $invoice->getStatus() !== 'paid') {
+            echo '<script src="https://js.stripe.com/v3/"></script>';
+        }
+        echo '<style>';
+        echo 'body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f9fafb;margin:0;padding:0;}';
+        echo '.page{max-width:640px;margin:40px auto;padding:24px;border-radius:8px;background:#ffffff;box-shadow:0 10px 15px -3px rgba(0,0,0,0.1),0 4px 6px -4px rgba(0,0,0,0.1);}';
+        echo 'h1{font-size:24px;margin:0 0 16px;}';
+        echo '.muted{color:#6b7280;font-size:14px;margin-bottom:4px;}';
+        echo '.amount{font-size:24px;font-weight:600;margin:8px 0 16px;}';
+        echo 'table{width:100%;border-collapse:collapse;margin-top:16px;font-size:14px;}';
+        echo 'th,td{text-align:left;padding:8px 4px;}';
+        echo 'th{border-bottom:1px solid #e5e7eb;color:#6b7280;font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;}';
+        echo 'tr:nth-child(even) td{background:#f9fafb;}';
+        echo '.status{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;margin-left:8px;}';
+        echo '.status-paid{background:#dcfce7;color:#166534;}';
+        echo '.status-unpaid{background:#fee2e2;color:#b91c1c;}';
+        echo '#payment-element{margin-top: 24px; margin-bottom: 24px;}';
+        echo '#submit{background:#16a34a;color:#ffffff;border:none;padding:12px 24px;border-radius:4px;font-size:16px;font-weight:600;cursor:pointer;width:100%;}';
+        echo '#submit:disabled{opacity:0.5;cursor:not-allowed;}';
+        echo '#error-message{color:#dc2626;margin-top:12px;font-size:14px;}';
+        echo '.hidden{display:none;}';
+        echo '</style>';
+        echo '</head>';
+        echo '<body>';
+        echo '<div class="page">';
+        
+        $customer = $this->customerRepository->getById($invoice->getCustomerId());
+        $customerName = $customer ? $customer->getName() : 'Customer';
+        
+        echo '<div class="muted">Invoice for ' . esc_html($customerName) . '</div>';
+        echo '<h1>Invoice #' . esc_html($invoice->getId()) . '</h1>';
+        
+        $statusClass = 'status-' . ($invoice->getStatus() === 'paid' ? 'paid' : 'unpaid');
+        echo '<div><span class="muted">Status</span><span class="status ' . esc_attr($statusClass) . '">' . esc_html(ucfirst($invoice->getStatus())) . '</span></div>';
+        
+        echo '<div class="amount">$' . esc_html(number_format((float) $invoice->getTotalAmount(), 2)) . '</div>';
+        
+        if (!empty($items)) {
+            echo '<table>';
+            echo '<thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th>Total</th></tr></thead>';
+            echo '<tbody>';
+            foreach ($items as $item) {
+                echo '<tr>';
+                echo '<td>' . esc_html($item['description']) . '</td>';
+                echo '<td>' . esc_html($item['qty']) . '</td>';
+                echo '<td>$' . esc_html(number_format((float) $item['unit_price'], 2)) . '</td>';
+                echo '<td>$' . esc_html(number_format((float) $item['total'], 2)) . '</td>';
+                echo '</tr>';
+            }
+            echo '</tbody>';
+            echo '</table>';
+        }
+
+        if ($isStripeEnabled && $invoice->getStatus() !== 'paid') {
+            echo '<div id="payment-form-container">';
+            echo '<form id="payment-form">';
+            echo '<div id="payment-element"><!--Stripe.js injects the Payment Element--></div>';
+            echo '<button id="submit"><div class="spinner hidden" id="spinner"></div><span id="button-text">Pay Now</span></button>';
+            echo '<div id="error-message" class="hidden"></div>';
+            echo '</form>';
+            echo '</div>';
+
+            echo "<script>
+            const stripe = Stripe('" . esc_js($publishableKey) . "');
+            const token = '" . esc_js($token) . "';
+            
+            initialize();
+
+            async function initialize() {
+                const response = await fetch('/wp-json/businessapp/v1/create-payment-intent', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ public_token: token }),
+                });
+                
+                const { clientSecret } = await response.json();
+                
+                const appearance = { theme: 'stripe' };
+                const elements = stripe.elements({ appearance, clientSecret });
+                
+                const paymentElementOptions = { layout: 'tabs' };
+                const paymentElement = elements.create('payment', paymentElementOptions);
+                paymentElement.mount('#payment-element');
+                
+                const form = document.getElementById('payment-form');
+                form.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    setLoading(true);
+                    
+                    const { error } = await stripe.confirmPayment({
+                        elements,
+                        confirmParams: {
+                            return_url: window.location.href + '&payment_success=true',
+                        },
+                    });
+                    
+                    if (error) {
+                        showMessage(error.message);
+                        setLoading(false);
+                    } else {
+                        // The UI automatically closes the modal
+                    }
+                });
+            }
+
+            function showMessage(messageText) {
+                const messageContainer = document.querySelector('#error-message');
+                messageContainer.classList.remove('hidden');
+                messageContainer.textContent = messageText;
+            }
+
+            function setLoading(isLoading) {
+                if (isLoading) {
+                    document.querySelector('#submit').disabled = true;
+                    document.querySelector('#spinner').classList.remove('hidden');
+                    document.querySelector('#button-text').classList.add('hidden');
+                } else {
+                    document.querySelector('#submit').disabled = false;
+                    document.querySelector('#spinner').classList.add('hidden');
+                    document.querySelector('#button-text').classList.remove('hidden');
+                }
+            }
+            </script>";
+        }
+
+        echo '</div>'; // .page
+        echo '</body></html>';
         exit;
     }
 

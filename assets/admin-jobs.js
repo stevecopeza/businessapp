@@ -126,6 +126,15 @@
     };
 
     const JobList = ({ jobs, customers, quotes, onEdit }) => {
+        const workflowSettings = window.businessappData.settings.workflow || {};
+        const jobStatuses = workflowSettings.job || {
+            'planned': 'Planned',
+            'in_progress': 'In Progress',
+            'on_hold': 'On Hold',
+            'completed': 'Completed',
+            'cancelled': 'Cancelled'
+        };
+
         const getCustomerName = (id) => {
             const customer = customers.find(c => c.id == id);
             return customer ? customer.name : id;
@@ -152,7 +161,7 @@
                     el('td', null,
                         el('a', { href: '#', onClick: (e) => { e.preventDefault(); onEdit(job); } }, job.title)
                     ),
-                    el('td', null, el('span', { className: `businessapp-badge ${job.status}` }, job.status)),
+                    el('td', null, el('span', { className: `businessapp-badge ${job.status}` }, jobStatuses[job.status] || job.status)),
                     el('td', null, getCustomerName(job.customer_id)),
                     el('td', null, getQuoteRef(job.quote_id)),
                     el('td', null, job.start_date),
@@ -166,6 +175,20 @@
 
     const JobEditor = ({ job, customers, quotes, onSave, onCancel }) => {
         const [formData, setFormData] = useState({ items: [], ...job });
+        const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
+
+        // Lock logic: Job is locked if it was already completed/cancelled AND the user hasn't set it to active yet.
+        const isLocked = job && ['completed', 'cancelled'].includes(job.status) && ['completed', 'cancelled'].includes(formData.status);
+        
+        // Workflow Settings
+        const workflowSettings = window.businessappData.settings.workflow || {};
+        const jobStatuses = workflowSettings.job || {
+            'planned': 'Planned',
+            'in_progress': 'In Progress',
+            'on_hold': 'On Hold',
+            'completed': 'Completed',
+            'cancelled': 'Cancelled'
+        };
 
         const handleChange = (key, value) => {
             setFormData({ ...formData, [key]: value });
@@ -173,15 +196,25 @@
 
         const handleQuoteChange = (quoteId) => {
             const updates = { quote_id: quoteId };
-            // If quote selected and no customer, or to keep sync, auto-select customer?
-            // Let's simple: if quote has customer, switch to it.
             if (quoteId) {
                 const quote = quotes.find(q => q.id == quoteId);
-                if (quote && quote.customer_id) {
-                    updates.customer_id = quote.customer_id;
+                if (quote) {
+                    if (quote.customer_id) updates.customer_id = quote.customer_id;
+                    if (!formData.title && quote.title) updates.title = quote.title; // Auto-fill title if empty
+                    
+                    // Copy items if job has no items
+                    if ((!formData.items || formData.items.length === 0) && quote.items && quote.items.length > 0) {
+                        updates.items = quote.items.map(item => ({
+                            description: item.description,
+                            qty: item.qty,
+                            unit: item.unit,
+                            unit_price: item.unit_price,
+                            type: item.type || 'labor'
+                        }));
+                    }
                 }
             }
-            setFormData({ ...formData, ...updates });
+            setFormData(prev => ({ ...prev, ...updates }));
         };
 
         const handleItemChange = (index, key, value) => {
@@ -191,7 +224,7 @@
         };
 
         const handleAddItem = () => {
-            const newItems = [...(formData.items || []), { description: '', qty: 1, unit: 'ea', unit_price: 0 }];
+            const newItems = [...(formData.items || []), { description: '', qty: 1, unit: 'ea', unit_price: 0, type: 'labor' }];
             setFormData({ ...formData, items: newItems });
         };
 
@@ -201,75 +234,112 @@
             setFormData({ ...formData, items: newItems });
         };
 
+        const handleGenerateInvoice = async () => {
+            if (!confirm(__('Are you sure you want to generate an invoice for this job?', 'businessapp'))) {
+                return;
+            }
+        
+            setIsGeneratingInvoice(true);
+            try {
+                const response = await apiFetch({
+                    path: `/businessapp/v1/invoices/from-job/${job.id}`,
+                    method: 'POST'
+                });
+                alert(__('Invoice generated successfully!', 'businessapp'));
+            } catch (error) {
+                console.error('Error generating invoice:', error);
+                alert(__('Failed to generate invoice: ', 'businessapp') + (error.message || 'Unknown error'));
+            } finally {
+                setIsGeneratingInvoice(false);
+            }
+        };
+
+        // For new jobs, enforce Quote selection first
+        const isNewJob = job.id === 0;
+        const hasSelectedQuote = formData.quote_id > 0;
+
         return el('div', { className: 'job-editor' },
+            isLocked && el('div', { className: 'notice notice-warning inline', style: { marginBottom: '20px' } },
+                el('p', null, __('This job is locked because it is completed or cancelled. Change status to Active to edit details.', 'businessapp'))
+            ),
+
             el(PanelBody, { title: __('Job Details', 'businessapp') },
-                el(PanelRow, null,
-                    el(TextControl, {
-                        label: __('Title', 'businessapp'),
-                        value: formData.title,
-                        onChange: (val) => handleChange('title', val)
-                    })
-                ),
+                // Quote Selection - Primary for New Jobs
                 el(PanelRow, null,
                     el(SelectControl, {
-                        label: __('Quote', 'businessapp'),
+                        label: __('Start from Quote', 'businessapp'),
                         value: formData.quote_id,
                         options: [
                             { label: __('Select Quote', 'businessapp'), value: 0 },
                             ...quotes.map(q => ({ label: q.title ? `${q.title} (Q-${q.id})` : `Q-${q.id}`, value: q.id }))
                         ],
-                        onChange: (val) => handleQuoteChange(val)
+                        onChange: (val) => handleQuoteChange(val),
+                        disabled: isLocked,
+                        help: isNewJob ? __('Select a quote to automatically fill customer and job details.', 'businessapp') : ''
                     })
                 ),
-                el(PanelRow, null,
-                    el(SelectControl, {
-                        label: __('Customer', 'businessapp'),
-                        value: formData.customer_id,
-                        options: [
-                            { label: __('Select Customer', 'businessapp'), value: '' },
-                            ...customers.map(c => ({ label: c.name, value: c.id }))
-                        ],
-                        onChange: (val) => handleChange('customer_id', val)
-                    })
-                ),
-                el(PanelRow, null,
-                    el(SelectControl, {
-                        label: __('Status', 'businessapp'),
-                        value: formData.status,
-                        options: [
-                            { label: 'Active', value: 'active' },
-                            { label: 'Completed', value: 'completed' },
-                            { label: 'Cancelled', value: 'cancelled' }
-                        ],
-                        onChange: (val) => handleChange('status', val)
-                    })
-                ),
-                el(PanelRow, null,
-                    el(TextareaControl, {
-                        label: __('Notes', 'businessapp'),
-                        value: formData.notes,
-                        onChange: (val) => handleChange('notes', val)
-                    })
-                ),
-                el(PanelRow, null,
-                    el(TextControl, {
-                        label: __('Start Date', 'businessapp'),
-                        type: 'datetime-local',
-                        value: formData.start_date || '',
-                        onChange: (val) => handleChange('start_date', val)
-                    })
-                ),
-                el(PanelRow, null,
-                    el(TextControl, {
-                        label: __('End Date', 'businessapp'),
-                        type: 'datetime-local',
-                        value: formData.end_date || '',
-                        onChange: (val) => handleChange('end_date', val)
-                    })
+
+                // Only show other fields if not a new job OR if a quote has been selected
+                (!isNewJob || hasSelectedQuote) && el(Fragment, null,
+                    el(PanelRow, null,
+                        el(TextControl, {
+                            label: __('Title', 'businessapp'),
+                            value: formData.title,
+                            onChange: (val) => handleChange('title', val),
+                            disabled: isLocked
+                        })
+                    ),
+                    el(PanelRow, null,
+                        el(SelectControl, {
+                            label: __('Customer', 'businessapp'),
+                            value: formData.customer_id,
+                            options: [
+                                { label: __('Select Customer', 'businessapp'), value: '' },
+                                ...customers.map(c => ({ label: c.name, value: c.id }))
+                            ],
+                            onChange: (val) => handleChange('customer_id', val),
+                            disabled: true, // Customer is drawn from Quote (read-only per requirement)
+                            help: __('Customer is linked to the selected Quote.', 'businessapp')
+                        })
+                    ),
+                    el(PanelRow, null,
+                        el(SelectControl, {
+                            label: __('Status', 'businessapp'),
+                            value: formData.status,
+                            options: Object.entries(jobStatuses).map(([value, label]) => ({ label, value })),
+                            onChange: (val) => handleChange('status', val)
+                        })
+                    ),
+                    el(PanelRow, null,
+                        el(TextareaControl, {
+                            label: __('Notes', 'businessapp'),
+                            value: formData.notes,
+                            onChange: (val) => handleChange('notes', val),
+                            disabled: isLocked
+                        })
+                    ),
+                    el(PanelRow, null,
+                        el(TextControl, {
+                            label: __('Start Date', 'businessapp'),
+                            type: 'datetime-local',
+                            value: formData.start_date || '',
+                            onChange: (val) => handleChange('start_date', val),
+                            disabled: isLocked
+                        })
+                    ),
+                    el(PanelRow, null,
+                        el(TextControl, {
+                            label: __('End Date', 'businessapp'),
+                            type: 'datetime-local',
+                            value: formData.end_date || '',
+                            onChange: (val) => handleChange('end_date', val),
+                            disabled: isLocked
+                        })
+                    )
                 )
             ),
 
-            formData.dynamic_fields && Object.keys(formData.dynamic_fields).length > 0 && el(PanelBody, { title: __('Additional Info', 'businessapp'), initialOpen: false },
+            (!isNewJob || hasSelectedQuote) && formData.dynamic_fields && Object.keys(formData.dynamic_fields).length > 0 && el(PanelBody, { title: __('Additional Info', 'businessapp'), initialOpen: false },
                 Object.entries(formData.dynamic_fields).map(([key, value]) => 
                     el(PanelRow, { key: key },
                         el(TextControl, { label: key, value: value, readOnly: true })
@@ -277,10 +347,11 @@
                 )
             ),
 
-            el(PanelBody, { title: __('Items', 'businessapp'), initialOpen: true },
+            (!isNewJob || hasSelectedQuote) && el(PanelBody, { title: __('Items', 'businessapp'), initialOpen: true },
                 el('table', { className: 'widefat striped' },
                     el('thead', null,
                         el('tr', null,
+                            el('th', { style: { width: '100px' } }, __('Type', 'businessapp')),
                             el('th', null, __('Description', 'businessapp')),
                             el('th', { style: { width: '80px' } }, __('Qty', 'businessapp')),
                             el('th', { style: { width: '80px' } }, __('Unit', 'businessapp')),
@@ -292,47 +363,70 @@
                         formData.items && formData.items.map((item, index) => 
                             el('tr', { key: index },
                                 el('td', null,
+                                    el(SelectControl, {
+                                        value: item.type || 'labor',
+                                        options: [
+                                            { label: 'Labor', value: 'labor' },
+                                            { label: 'Material', value: 'material' },
+                                            { label: 'Fee', value: 'fee' }
+                                        ],
+                                        onChange: (val) => handleItemChange(index, 'type', val),
+                                        disabled: isLocked
+                                    })
+                                ),
+                                el('td', null,
                                     el(TextControl, {
                                         value: item.description,
-                                        onChange: (val) => handleItemChange(index, 'description', val)
+                                        onChange: (val) => handleItemChange(index, 'description', val),
+                                        disabled: isLocked
                                     })
                                 ),
                                 el('td', null,
                                     el(TextControl, {
                                         type: 'number',
                                         value: item.qty,
-                                        onChange: (val) => handleItemChange(index, 'qty', val)
+                                        onChange: (val) => handleItemChange(index, 'qty', val),
+                                        disabled: isLocked
                                     })
                                 ),
                                 el('td', null,
                                     el(TextControl, {
                                         value: item.unit,
-                                        onChange: (val) => handleItemChange(index, 'unit', val)
+                                        onChange: (val) => handleItemChange(index, 'unit', val),
+                                        disabled: isLocked
                                     })
                                 ),
                                 el('td', null,
                                     el(TextControl, {
                                         type: 'number',
                                         value: item.unit_price,
-                                        onChange: (val) => handleItemChange(index, 'unit_price', val)
+                                        onChange: (val) => handleItemChange(index, 'unit_price', val),
+                                        disabled: isLocked
                                     })
                                 ),
                                 el('td', null,
-                                    el(Button, { isSmall: true, isDestructive: true, onClick: () => handleRemoveItem(index) }, '×')
+                                    el(Button, { isSmall: true, isDestructive: true, onClick: () => handleRemoveItem(index), disabled: isLocked }, '×')
                                 )
                             )
                         ),
-                        (!formData.items || formData.items.length === 0) && el('tr', null, el('td', { colSpan: 5 }, __('No items. Add one below.', 'businessapp')))
+                        (!formData.items || formData.items.length === 0) && el('tr', null, el('td', { colSpan: 6 }, __('No items. Add one below.', 'businessapp')))
                     )
                 ),
                 el('div', { style: { marginTop: '10px' } },
-                    el(Button, { isSecondary: true, onClick: handleAddItem }, __('Add Item', 'businessapp'))
+                    el(Button, { isSecondary: true, onClick: handleAddItem, disabled: isLocked }, __('Add Item', 'businessapp'))
                 )
             ),
 
-            el('div', { className: 'editor-actions', style: { marginTop: '20px' } },
-                el(Button, { isPrimary: true, onClick: () => onSave(formData) }, __('Save Job', 'businessapp')),
-                el(Button, { isSecondary: true, onClick: onCancel, style: { marginLeft: '10px' } }, __('Cancel', 'businessapp'))
+            (!isNewJob || hasSelectedQuote) && el('div', { className: 'editor-actions', style: { marginTop: '20px' } },
+                el(Button, { isPrimary: true, onClick: () => onSave(formData), disabled: isLocked && formData.status === job.status }, __('Save Job', 'businessapp')),
+                el(Button, { isSecondary: true, onClick: onCancel, style: { marginLeft: '10px' } }, __('Cancel', 'businessapp')),
+                job.status === 'completed' && el(Button, { 
+                    isSecondary: true, 
+                    onClick: handleGenerateInvoice, 
+                    isBusy: isGeneratingInvoice,
+                    disabled: isGeneratingInvoice,
+                    style: { marginLeft: '10px' } 
+                }, __('Generate Invoice', 'businessapp'))
             )
         );
     };

@@ -1,20 +1,21 @@
 # BusinessApp — Job Lifecycle Flow
 
 ## Job Creation Sources
-Jobs enter the system through two primary paths, each with specific schema inheritance rules:
+Jobs enter the system primarily through the Quote-to-Job workflow, enforced by the user interface to ensure data consistency.
 
-1. **From Accepted Quote:**
-   - The job inherits the schema and data directly from the originating quote.
-   - This ensures the job matches exactly what was agreed upon, even if the Business Type configuration has changed since the quote was issued.
+1. **From Accepted Quote (Primary):**
+   - **UI Enforcement:** The "Create Job" interface requires selecting a Quote.
+   - **Auto-Fill:** Selecting a Quote automatically populates the Job's Title, Customer, and initial Line Items.
+   - **Status Propagation:** When a Quote is marked as `Accepted`, the system automatically creates a corresponding Job in the `Planned` status (or configured equivalent).
+   - **Schema Inheritance:** The job inherits the schema and data directly from the originating quote.
 
-2. **Direct Creation:**
+2. **Direct Creation (API / Admin Override):**
+   - While the standard UI enforces Quote selection, the API and repository layer support direct job creation.
+   - This is used for edge cases or legacy data migration.
    - The job captures the Business Type configuration active at the moment of creation.
-   - The schema is locked immediately upon initialization.
 
-3. **Manual Association (Post-Creation):**
-   - Jobs created directly can be manually linked to an existing Quote and Customer.
-   - This allows for "retroactive" association if the workflow was non-linear.
-   - Changing the Quote link may update the Customer association to match the Quote's owner.
+3. **Duplicate Prevention:**
+   - The system checks for existing jobs linked to a Quote before auto-creating a new one to prevent duplicates during status transitions.
 
 ## Schema Stability
 Once a job exists, its structure is immutable regarding configuration changes:
@@ -22,23 +23,26 @@ Once a job exists, its structure is immutable regarding configuration changes:
 - **No Auto-Updates:** Modifying the global Business Type settings does not trigger updates to existing jobs.
 - **Historical Accuracy:** The job remains a faithful record of the requirements as they were defined at its inception.
 
-## Lifecycle Progression
-Jobs move through standard operational states. The state determines the mutability of the job.
+## Lifecycle Progression & Unified Workflow
+The Job lifecycle is part of a larger Unified Workflow (Quote -> Job -> Invoice). Statuses are configurable via the Admin Settings.
 
-1. **Pending / Active (Mutable):**
-   - Default state upon creation.
+1. **Planned (Default Initial State):**
+   - Automatically entered when a Quote is Accepted.
+   - Work is scheduled/planned.
+   - Fully mutable.
+
+2. **In Progress / On Hold (Active):**
+   - Work is underway or temporarily paused.
    - All fields (Title, Notes, Dynamic Fields) are editable.
    - Line items can be added, removed, or modified.
-   - Customer and Quote associations can be updated.
 
-2. **Completed (Immutable):**
+3. **Completed (Immutable):**
    - Marks the job as finished.
    - **Locking Rule:** Once a job is set to 'completed', it becomes **read-only**.
-   - No further changes to items, notes, or fields are permitted.
-   - This ensures data integrity for downstream invoicing.
-   - To correct a mistake, the job must be explicitly reopened (moved back to 'active') by an admin.
+   - **Invoice Trigger:** Completion signals readiness for invoicing.
+   - To correct a mistake, the job must be explicitly reopened (moved back to an active status) by an admin.
 
-3. **Cancelled (Immutable):**
+4. **Cancelled (Immutable):**
    - Marks the job as abandoned.
    - Follows the same locking rules as 'completed'.
 

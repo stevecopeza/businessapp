@@ -25,6 +25,7 @@ Retrieves the current application configuration.
     { "label": "Service A", "price": 100.00 }
   ],
   "business_type": {
+    // Note: Established during Initial Setup and immutable thereafter.
     "type": "Panel Beater",
     "vehicle_fields": ["Make", "Model", "VIN"],
     "default_options": ["Bumper Unit"]
@@ -103,3 +104,47 @@ Partial update supported.
 }
 ```
 **Note:** Providing `items` replaces the entire list of items for the job.
+
+## Invoice Endpoints
+
+### GET /businessapp/v1/invoices
+Lists all invoices.
+
+**Query Parameters:**
+- `status` (optional): Filter by status (draft, sent, paid, void).
+- `job_id` (optional): Filter by source job.
+
+**Response:**
+Array of Invoice objects.
+
+### POST /businessapp/v1/invoices
+Creates a new invoice.
+
+**Request Body:**
+```json
+{
+  "job_id": 123, // Optional, if creating from job
+  "customer_id": 456, // Required if job_id not provided
+  "title": "Invoice #1001",
+  "items": [ ... ], // Optional override of job items
+  "notes": "Thank you for your business"
+}
+```
+
+### GET /businessapp/v1/invoices/:id
+Retrieves a specific invoice.
+
+### POST /businessapp/v1/invoices/:id
+Updates an invoice.
+
+**Constraints:**
+- Only `draft` invoices can be fully edited.
+- `sent` invoices allow only status updates (to `paid` or `void`) or must be reverted to `draft` (if not paid).
+
+**Request Body:**
+```json
+{
+  "status": "sent", // Triggers 'sent' logic (locking)
+  "items": [ ... ] // Only allowed if status is 'draft'
+}
+```

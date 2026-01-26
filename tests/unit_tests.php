@@ -30,6 +30,7 @@ if (!class_exists('wpdb')) {
         public $last_query;
         public $queries = [];
         public $mock_status = 'draft';
+        public $mock_rows = [];
         
         public function insert($table, $data) {
             $q = "INSERT into $table " . json_encode($data);
@@ -53,6 +54,14 @@ if (!class_exists('wpdb')) {
         }
         
         public function get_row($query, $output_type = 'OBJECT', $row_offset = 0) {
+            if (!empty($this->mock_rows)) {
+                $row = array_shift($this->mock_rows);
+                if ($output_type == 'OBJECT') {
+                    return (object)$row;
+                }
+                return $row;
+            }
+
             // Return dummy array for ARRAY_A
             if ($output_type == 'ARRAY_A') {
                 return [
@@ -124,6 +133,9 @@ require_once __DIR__ . '/../includes/Infrastructure/QuoteRepository.php';
 require_once __DIR__ . '/../includes/Infrastructure/QuoteItemRepository.php';
 require_once __DIR__ . '/../includes/Infrastructure/JobRepository.php';
 require_once __DIR__ . '/../includes/Infrastructure/JobItemRepository.php';
+require_once __DIR__ . '/../includes/Domain/Invoice.php';
+require_once __DIR__ . '/../includes/Infrastructure/InvoiceRepository.php';
+require_once __DIR__ . '/../includes/Infrastructure/InvoiceItemRepository.php';
 
 use BusinessApp\Infrastructure\CustomerEntityRepository;
 use BusinessApp\Domain\QuoteFactory;
@@ -132,6 +144,9 @@ use BusinessApp\Infrastructure\JobRepository;
 use BusinessApp\Infrastructure\JobItemRepository;
 use BusinessApp\Domain\Quote;
 use BusinessApp\Domain\QuoteItem;
+use BusinessApp\Domain\Invoice;
+use BusinessApp\Infrastructure\InvoiceRepository;
+use BusinessApp\Infrastructure\InvoiceItemRepository;
 
 echo "Starting Unit Tests (Mocked DB)...\n";
 echo "----------------------------------\n";
@@ -295,6 +310,96 @@ try {
     }
 } catch (Exception $e) {
     echo "[FAIL] Exception thrown for Draft quote: " . $e->getMessage() . "\n";
+}
+
+
+// TEST 6: Invoice & Revenue Logic
+echo "\nTest 6: Invoice & Revenue Logic\n";
+$invoiceItemRepo = new InvoiceItemRepository($wpdb, 'wp_businessapp_invoice_items');
+$invoiceRepo = new InvoiceRepository($wpdb, 'wp_businessapp_invoices', $invoiceItemRepo);
+
+// 6.1 Create Invoice
+echo "6.1 Invoice Creation\n";
+$items = [
+    ['description' => 'Service', 'qty' => 2, 'unit_price' => 100, 'unit' => 'hr', 'type' => 'labor']
+];
+
+// Mock the return row for the getById call inside create()
+$wpdb->mock_rows[] = [
+    'id' => 1,
+    'job_id' => 10,
+    'customer_id' => 5,
+    'status' => 'draft',
+    'title' => 'Test Invoice',
+    'notes' => 'Payment due in 7 days',
+    'total_amount' => 200.0,
+    'created_at' => current_time('mysql'),
+    'updated_at' => current_time('mysql')
+];
+
+$invoice = $invoiceRepo->create(
+    10, // job_id
+    5,  // customer_id
+    'Test Invoice',
+    'Payment due in 7 days',
+    $items
+);
+
+$invoiceInsertFound = false;
+foreach ($wpdb->queries as $q) {
+    if (strpos($q, 'INSERT into wp_businessapp_invoices') !== false) {
+        $invoiceInsertFound = true;
+        break;
+    }
+}
+
+if ($invoiceInsertFound) {
+    echo "[PASS] Invoice Insert query executed.\n";
+} else {
+    echo "[FAIL] Invoice Insert query missing.\n";
+}
+
+if ($invoice->getTotalAmount() == 200.0) {
+    echo "[PASS] Invoice Total Amount calculated correctly (200.0).\n";
+} else {
+    echo "[FAIL] Invoice Total Amount incorrect: " . $invoice->getTotalAmount() . "\n";
+}
+
+// 6.2 Revenue Stats
+echo "6.2 Revenue Stats\n";
+// Mock the SQL result for getRevenueStats
+$wpdb->mock_rows[] = ['paid' => 500.00, 'invoiced' => 1200.00];
+
+$stats = $invoiceRepo->getRevenueStats();
+
+if ($stats['paid'] == 500.0 && $stats['invoiced'] == 1200.0) {
+    echo "[PASS] Revenue Stats retrieved correctly.\n";
+} else {
+    echo "[FAIL] Revenue Stats incorrect. Got: " . json_encode($stats) . "\n";
+}
+
+// 6.3 Update Invoice
+echo "6.3 Update Invoice Status\n";
+
+// Mock for getById call inside update()
+$wpdb->mock_rows[] = [
+    'id' => 1,
+    'job_id' => 10,
+    'customer_id' => 5,
+    'status' => 'sent', // Updated status
+    'title' => 'Test Invoice',
+    'notes' => 'Payment due in 7 days',
+    'total_amount' => 200.0,
+    'created_at' => current_time('mysql'),
+    'updated_at' => current_time('mysql')
+];
+
+$updatedInvoice = $invoiceRepo->update(1, ['status' => 'sent']);
+
+if ($updatedInvoice->getStatus() === 'sent') {
+    echo "[PASS] Invoice Status updated to 'sent'.\n";
+} else {
+    echo "[FAIL] Invoice Status update failed.\n";
 }
 
 

@@ -2,9 +2,9 @@
 
 namespace BusinessApp\Infrastructure;
 
-use BusinessApp\Domain\JobItem;
+use BusinessApp\Domain\InvoiceItem;
 
-class JobItemRepository
+class InvoiceItemRepository
 {
     private $wpdb;
     private $tableName;
@@ -15,7 +15,7 @@ class JobItemRepository
         $this->tableName = $tableName;
     }
 
-    public function createItem($jobId, $description, $qty, $unit, $unitPrice, $type = 'labor')
+    public function createItem($invoiceId, $description, $qty, $unit, $unitPrice, $type = 'labor')
     {
         $description = (string) $description;
         $qty = (int) $qty;
@@ -36,7 +36,7 @@ class JobItemRepository
         $this->wpdb->insert(
             $this->tableName,
             [
-                'job_id'   => $jobId,
+                'invoice_id'   => $invoiceId,
                 'description' => $description,
                 'qty'        => $qty,
                 'unit'       => $unit,
@@ -58,12 +58,12 @@ class JobItemRepository
         );
     }
 
-    public function getItemsForJob($jobId)
+    public function getItemsForInvoice($invoiceId)
     {
         $rows = $this->wpdb->get_results(
             $this->wpdb->prepare(
-                "SELECT id, description, qty, unit, unit_price, amount, type, position FROM {$this->tableName} WHERE job_id = %d ORDER BY position ASC, id ASC",
-                $jobId
+                "SELECT id, description, qty, unit, unit_price, amount, type, position FROM {$this->tableName} WHERE invoice_id = %d ORDER BY position ASC, id ASC",
+                $invoiceId
             ),
             ARRAY_A
         );
@@ -74,7 +74,7 @@ class JobItemRepository
 
         $items = [];
         foreach ($rows as $row) {
-            $items[] = new JobItem(
+            $items[] = new InvoiceItem(
                 (int) $row['id'],
                 (string) $row['description'],
                 (int) $row['qty'],
@@ -88,11 +88,11 @@ class JobItemRepository
         return $items;
     }
 
-    public function deleteItemsForJob($jobId)
+    public function deleteItemsForInvoice($invoiceId)
     {
         $this->wpdb->delete(
             $this->tableName,
-            ['job_id' => $jobId],
+            ['invoice_id' => $invoiceId],
             ['%d']
         );
     }

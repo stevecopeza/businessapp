@@ -5,15 +5,28 @@ Phase 1: Quoting clarity (Complete)
 - PDF generation and email sending.
 - Customer acceptance/rejection flow.
 
-Phase 2: Light job tracking (In Progress)
+Phase 2: Light job tracking (Complete)
 - [x] Job creation from quotes.
 - [x] Direct job creation.
 - [x] Job item management (Add/Edit/Remove items).
-- [ ] Job status workflow (Active -> Completed).
-- [ ] Basic time/material tracking.
+- [x] Job status workflow (Active -> Completed).
+- [x] Basic time/material tracking.
 
-Phase 3: Simple financial outputs
-- Invoicing based on completed jobs.
-- Basic revenue reporting.
+Phase 3: Simple financial outputs (Complete)
+- [x] Invoicing based on completed jobs.
+- [x] Basic revenue reporting.
+
+Phase 4: Client Communication & Public Views (Next)
+- [ ] Public-facing Quote/Invoice views (HTML + Print CSS).
+- [ ] Secure token generation.
+- [ ] Email notifications via wp_mail.
+- [ ] "View as Client" button for Admins.
+
+Phase 5: Payments & Integrations (Planned)
+- [ ] Stripe Payment Gateway integration.
+- [ ] "Pay Now" button on public invoices.
+- [ ] Payment entity and database table.
+- [ ] Manual payment recording (cash/check).
+- [ ] Invoice balance tracking and status automation.
 
 Each phase builds on the last.

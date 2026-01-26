@@ -21,7 +21,20 @@ Currently implemented endpoints:
 - `POST /businessapp/v1/quotes` — create draft quote
 - `GET /businessapp/v1/quotes` — list existing quotes
 - `POST /businessapp/v1/quotes/{id}/send` — move draft quote to sent
-- `POST /businessapp/v1/quotes/{id}/accept` — mark sent quote as accepted
-- `POST /businessapp/v1/quotes/{id}/reject` — mark sent quote as rejected
+- `POSTGET /businessapp/v1/quotes/{id}/accept — mark sent quote as accepted
+- POST /businessapp/v1/quotes/{id}/reject — mark sent quote as rejected
+
+## Settings & Configuration (JSON Payload)
+
+```json
+{
+  "settings": {
+    "currency_symbol": "$",
+    "tax_rate": 0.10,
+    // business_type is established during setup and is immutable.
+    "business_type": "gardening" 
+  }
+}
+```
 
 Other actions (revise, send, accept, comments, attachments) are defined conceptually here and will be implemented in subsequent iterations.

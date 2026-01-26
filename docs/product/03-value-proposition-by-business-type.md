@@ -4,6 +4,8 @@ FILENAME: 03-value-proposition-by-business-type.md
 
 ## Business Type as the Source of Record Schema
 
+> **Note:** For authoritative details on the setup process and immutability rules, see [Initial Setup and Business Type](01-initial-setup-and-business-type.md).
+
 Your **Business Type** is a single, company-wide setting that acts as the blueprint for your entire workflow. It defines exactly which input fields appear on your Quotes, Jobs, Tasks, and Orders, ensuring you always capture the right information for your specific trade.
 
 Because your business evolves, BusinessApp protects your history. When you create a new record, it captures the Business Type definition active at that moment. If you later change your Business Type configuration, your existing records remain unchanged, preserving the accuracy of your past work.

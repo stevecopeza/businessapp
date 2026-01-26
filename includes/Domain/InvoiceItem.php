@@ -2,7 +2,7 @@
 
 namespace BusinessApp\Domain;
 
-class JobItem
+class InvoiceItem
 {
     private $id;
     private $description;

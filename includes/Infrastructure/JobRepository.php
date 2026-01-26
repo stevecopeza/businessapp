@@ -48,14 +48,28 @@ class JobRepository
         return $this->mapRowToJob($row);
     }
 
-    public function create($quoteId, $customerId, $title, $notes = '', $startDate = null, $endDate = null, $dynamicFields = [], $schemaSnapshot = [], $associatedEntityIds = [], $items = [])
+    public function getByQuoteId($quoteId)
+    {
+        $row = $this->wpdb->get_row(
+            $this->wpdb->prepare("SELECT * FROM {$this->tableName} WHERE quote_id = %d", $quoteId),
+            ARRAY_A
+        );
+
+        if (!$row) {
+            return null;
+        }
+
+        return $this->mapRowToJob($row);
+    }
+
+    public function create($quoteId, $customerId, $title, $notes = '', $startDate = null, $endDate = null, $dynamicFields = [], $schemaSnapshot = [], $associatedEntityIds = [], $items = [], $status = 'planned')
     {
         $now = current_time('mysql');
         
         $data = [
             'quote_id' => $quoteId,
             'customer_id' => $customerId,
-            'status' => 'active',
+            'status' => $status,
             'title' => $title,
             'notes' => $notes,
             'start_date' => $startDate,
@@ -161,13 +175,15 @@ class JobRepository
                 $qty = is_array($item) ? $item['qty'] : (method_exists($item, 'getQty') ? $item->getQty() : 0);
                 $unit = is_array($item) ? $item['unit'] : (method_exists($item, 'getUnit') ? $item->getUnit() : '');
                 $unitPrice = is_array($item) ? $item['unit_price'] : (method_exists($item, 'getUnitPrice') ? $item->getUnitPrice() : 0.0);
+                $type = is_array($item) ? (isset($item['type']) ? $item['type'] : 'labor') : (method_exists($item, 'getType') ? $item->getType() : 'labor');
 
                 $this->jobItemRepository->createItem(
                     $id,
                     $description,
                     $qty,
                     $unit,
-                    $unitPrice
+                    $unitPrice,
+                    $type
                 );
             }
         }
