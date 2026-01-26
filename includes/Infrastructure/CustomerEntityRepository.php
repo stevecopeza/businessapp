@@ -53,8 +53,9 @@ class CustomerEntityRepository
 
     public function delete($id)
     {
-        $this->wpdb->delete(
+        $this->wpdb->update(
             $this->tableName,
+            ['status' => 'archived'],
             ['id' => $id]
         );
         return true;
@@ -63,7 +64,7 @@ class CustomerEntityRepository
     public function getById($id)
     {
         $row = $this->wpdb->get_row(
-            $this->wpdb->prepare("SELECT * FROM {$this->tableName} WHERE id = %d", $id)
+            $this->wpdb->prepare("SELECT * FROM {$this->tableName} WHERE id = %d AND status != 'archived'", $id)
         );
 
         if (!$row) {
@@ -76,7 +77,7 @@ class CustomerEntityRepository
     public function getByCustomerId($customerId)
     {
         $rows = $this->wpdb->get_results(
-            $this->wpdb->prepare("SELECT * FROM {$this->tableName} WHERE customer_id = %d ORDER BY created_at DESC", $customerId)
+            $this->wpdb->prepare("SELECT * FROM {$this->tableName} WHERE customer_id = %d AND status != 'archived' ORDER BY created_at DESC", $customerId)
         );
 
         return array_map([$this, 'mapRowToCustomerEntity'], $rows);

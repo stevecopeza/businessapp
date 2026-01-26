@@ -799,6 +799,7 @@ final class BusinessApp_Plugin
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
             customer_id BIGINT(20) UNSIGNED NOT NULL,
             entity_name VARCHAR(255) NOT NULL DEFAULT '',
+            status VARCHAR(20) NOT NULL DEFAULT 'active',
             dynamic_fields JSON DEFAULT NULL,
             schema_snapshot JSON DEFAULT NULL,
             created_at DATETIME NOT NULL,

@@ -29,6 +29,7 @@ if (!class_exists('wpdb')) {
         public $insert_id = 123;
         public $last_query;
         public $queries = [];
+        public $mock_status = 'draft';
         
         public function insert($table, $data) {
             $q = "INSERT into $table " . json_encode($data);
@@ -70,13 +71,29 @@ if (!class_exists('wpdb')) {
                     'updated_at' => '2023-01-01 00:00:00'
                 ];
             }
-            return (object) ['id' => 1];
+            return (object) [
+                'id' => 1,
+                'customer_id' => 1,
+                'entity_name' => 'Mock Entity',
+                'dynamic_fields' => '{}',
+                'schema_snapshot' => '{}',
+                'created_at' => '2023-01-01 00:00:00',
+                'updated_at' => '2023-01-01 00:00:00'
+            ];
         }
     
         public function get_results($query) {
             return [];
         }
     
+        public function get_var($query, $x = 0, $y = 0) {
+            // Return 'draft' for status checks to pass QuoteItemRepository security check
+            if (strpos($query, 'SELECT status') !== false) {
+                return $this->mock_status;
+            }
+            return null;
+        }
+
         public function prepare($query, $args) {
             return $query; // Simplified
         }
@@ -180,12 +197,26 @@ $quoteItems = [
 ];
 $quoteSnapshot = ['entity_name' => 'Vehicle'];
 $quoteDynamic = ['vin' => '123'];
-$quote = new Quote(100, 1, 'Converted Quote', 300, 'draft', 'panel_beater', [], 'John', 'john@example.com', '555', 'Notes', '2023-01-01', '2023-01-01', $quoteDynamic, $quoteSnapshot);
-// Inject items
-$reflection = new ReflectionClass($quote);
-$property = $reflection->getProperty('lineItems');
-$property->setAccessible(true);
-$property->setValue($quote, $quoteItems);
+
+// Constructor: id, status, customerId, title, totalAmount, customerName, customerEmail, customerPhone, notes, publicToken, paymentStatus, dynamicFields, schemaSnapshot, associatedEntityIds, lineItems, createdAt
+$quote = new Quote(
+    100, 
+    'draft', 
+    1, 
+    'Converted Quote', 
+    300.0, 
+    'John', 
+    'john@example.com', 
+    '555', 
+    'Notes', 
+    'token123', 
+    'unpaid', 
+    $quoteDynamic, 
+    $quoteSnapshot, 
+    [], 
+    $quoteItems, 
+    '2023-01-01'
+);
 
 // Simulate conversion by calling JobRepo->create with Quote data
 $jobRepo->create(
@@ -220,6 +251,50 @@ if (strpos($wpdb->last_query, 'wp_businessapp_job_items') !== false) {
      echo "[PASS] Job Item Insert query executed (last query).\n";
 } else {
      echo "[PASS] Job Item Insert query executed.\n";
+}
+
+
+// TEST 4: Customer Entity Archival
+echo "\nTest 4: Customer Entity Archival\n";
+$entityRepo->delete(123);
+if (strpos($wpdb->last_query, "UPDATE wp_businessapp_customer_entities") !== false && strpos($wpdb->last_query, "status") !== false && strpos($wpdb->last_query, "archived") !== false) {
+    echo "[PASS] Entity soft deleted (archived).\n";
+} else {
+    echo "[FAIL] Entity not archived. Query: " . $wpdb->last_query . "\n";
+}
+
+// TEST 5: Quote Item Security
+echo "\nTest 5: Quote Item Security\n";
+$quoteItemRepo = new JobItemRepository($wpdb, 'wp_businessapp_quote_items'); 
+// Wait, JobItemRepo? No, QuoteItemRepository.
+$quoteItemRepo = new \BusinessApp\Infrastructure\QuoteItemRepository($wpdb, 'wp_businessapp_quote_items');
+
+// Mock DB status return
+// We need to subclass MockWpdb or use a property to control return value?
+// MockWpdb::get_var returns 'draft' if query contains 'SELECT status'.
+// To test failure, we need it to return 'sent'.
+// We can hack MockWpdb to look at a global or static property.
+// Or just modify the mock class definition in this file to check a public property.
+
+$wpdb->mock_status = 'sent';
+
+try {
+    $quoteItemRepo->createItem(999, 'Test', 1, 'unit', 10);
+    echo "[FAIL] Should have thrown exception for Sent quote.\n";
+} catch (Exception $e) {
+    echo "[PASS] Blocked item addition to Sent quote: " . $e->getMessage() . "\n";
+}
+
+$wpdb->mock_status = 'draft';
+try {
+    $quoteItemRepo->createItem(999, 'Test', 1, 'unit', 10);
+    if (strpos($wpdb->last_query, "INSERT into wp_businessapp_quote_items") !== false) {
+        echo "[PASS] Allowed item addition to Draft quote.\n";
+    } else {
+        echo "[FAIL] Insert query missing for Draft quote.\n";
+    }
+} catch (Exception $e) {
+    echo "[FAIL] Exception thrown for Draft quote: " . $e->getMessage() . "\n";
 }
 
 

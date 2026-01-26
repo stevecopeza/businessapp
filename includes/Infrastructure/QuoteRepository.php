@@ -82,6 +82,11 @@ class QuoteRepository
         ];
 
         if ($quote->getId()) {
+            // Check current DB status to decide on item updates
+            $currentDbStatus = $this->wpdb->get_var(
+                $this->wpdb->prepare("SELECT status FROM {$this->tableName} WHERE id = %d", $quote->getId())
+            );
+
             $this->wpdb->update(
                 $this->tableName,
                 $data,
@@ -91,6 +96,14 @@ class QuoteRepository
             );
             $quoteId = $quote->getId();
         } else {
+            $currentDbStatus = 'draft'; // New quotes are treated as draft for item insertion (or whatever the quote status is, but usually draft)
+            // Actually if we create a quote as 'sent' immediately (import?), we might want to allow items.
+            // But standard flow is create draft.
+            // Let's assume 'draft' for logic below or checking $quote->getStatus() if needed.
+            // But simpler: New quotes always allow item insertion in this block logic, 
+            // because we haven't inserted the Quote row yet? 
+            // Wait, we insert Quote row first below.
+            
             $data['created_at'] = $now;
             $format[] = '%s';
             $this->wpdb->insert(
@@ -99,20 +112,30 @@ class QuoteRepository
                 $format
             );
             $quoteId = $this->wpdb->insert_id;
+            $currentDbStatus = 'draft'; // Effectively, since we just inserted, and if we inserted 'sent', the ItemRepo check might fail if we don't be careful.
+            // If we insert as 'sent', ItemRepo check (which queries DB) will see 'sent'.
+            // So we must insert items BEFORE Quote if we want to allow "Create as Sent".
+            // But we need ID for items.
+            // So "Create as Sent" is impossible with "ItemRepo Check".
+            // We must "Create as Draft", insert items, then "Update to Sent".
+            // Or ItemRepo must allow "If Quote doesn't exist yet?" No, it needs FK.
+            // So "Create as Sent" is blocked. That's fine.
         }
 
-        // Update items only if draft (lifecycle rule) or if we just want to ensure consistency
-        // For now, always replace items on save to keep it simple and robust
-        $this->quoteItemRepository->deleteItemsForQuote($quoteId);
+        // Update items only if currently draft in DB (allows transitioning Draft -> Sent)
+        // If it's already Sent in DB, we skip item updates to protect immutability (and avoid ItemRepo error)
+        if ($currentDbStatus === 'draft' || !$quote->getId()) {
+             $this->quoteItemRepository->deleteItemsForQuote($quoteId);
         
-        foreach ($quote->getLineItems() as $item) {
-            $this->quoteItemRepository->createItem(
-                $quoteId,
-                $item->getDescription(),
-                $item->getQty(),
-                $item->getUnit(),
-                $item->getUnitPrice()
-            );
+             foreach ($quote->getLineItems() as $item) {
+                 $this->quoteItemRepository->createItem(
+                     $quoteId,
+                     $item->getDescription(),
+                     $item->getQty(),
+                     $item->getUnit(),
+                     $item->getUnitPrice()
+                 );
+             }
         }
 
         return $quoteId;

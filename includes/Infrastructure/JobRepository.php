@@ -10,7 +10,7 @@ class JobRepository
     private $tableName;
     private $jobItemRepository;
 
-    public function __construct(\wpdb $wpdb, $tableName, JobItemRepository $jobItemRepository = null)
+    public function __construct(\wpdb $wpdb, $tableName, ?JobItemRepository $jobItemRepository = null)
     {
         $this->wpdb = $wpdb;
         $this->tableName = $tableName;

@@ -32,6 +32,16 @@ class QuoteItemRepository
             return;
         }
 
+        // Security Check: Ensure Quote is Draft
+        $quotesTable = $this->wpdb->prefix . 'businessapp_quotes';
+        $status = $this->wpdb->get_var(
+            $this->wpdb->prepare("SELECT status FROM {$quotesTable} WHERE id = %d", $quoteId)
+        );
+
+        if ($status && $status !== 'draft') {
+            throw new \RuntimeException("Cannot add items to a non-draft quote (Status: $status).");
+        }
+
         $this->wpdb->insert(
             $this->tableName,
             [
@@ -86,6 +96,16 @@ class QuoteItemRepository
 
     public function deleteItemsForQuote($quoteId)
     {
+        // Security Check: Ensure Quote is Draft
+        $quotesTable = $this->wpdb->prefix . 'businessapp_quotes';
+        $status = $this->wpdb->get_var(
+            $this->wpdb->prepare("SELECT status FROM {$quotesTable} WHERE id = %d", $quoteId)
+        );
+
+        if ($status && $status !== 'draft') {
+            throw new \RuntimeException("Cannot delete items from a non-draft quote (Status: $status).");
+        }
+
         $this->wpdb->delete(
             $this->tableName,
             ['quote_id' => $quoteId],

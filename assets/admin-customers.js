@@ -323,7 +323,7 @@ jQuery(document).ready(function($) {
                     html += `
                         <td>
                             <button class="button button-small businessapp-edit-entity-btn" data-id="${entity.id}">Edit</button>
-                            <button class="button button-small businessapp-delete-entity-btn" data-id="${entity.id}" style="color: #b32d2e;">Delete</button>
+                            <button class="button button-small businessapp-delete-entity-btn" data-id="${entity.id}" style="color: #b32d2e;">Archive</button>
                         </td>
                     `;
                     html += `</tr>`;
@@ -351,7 +351,7 @@ jQuery(document).ready(function($) {
             });
 
             $('.businessapp-delete-entity-btn').on('click', function() {
-                if (confirm('Are you sure you want to delete this entity?')) {
+                if (confirm('Are you sure you want to archive this entity?')) {
                     const id = $(this).data('id');
                     deleteEntity(customer.id, id);
                 }
