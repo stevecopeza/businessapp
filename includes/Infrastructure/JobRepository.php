@@ -105,6 +105,14 @@ class JobRepository
             $updateData['status'] = $data['status'];
             $format[] = '%s';
         }
+        if (isset($data['quote_id'])) {
+            $updateData['quote_id'] = $data['quote_id'];
+            $format[] = '%d';
+        }
+        if (isset($data['customer_id'])) {
+            $updateData['customer_id'] = $data['customer_id'];
+            $format[] = '%d';
+        }
         if (isset($data['title'])) {
             $updateData['title'] = $data['title'];
             $format[] = '%s';
@@ -142,6 +150,27 @@ class JobRepository
             $format,
             ['%d']
         );
+
+        // Update items if provided
+        if (isset($data['items']) && is_array($data['items']) && $this->jobItemRepository) {
+            $this->jobItemRepository->deleteItemsForJob($id);
+
+            foreach ($data['items'] as $item) {
+                // Handle both array (from request) and object (if passed as object)
+                $description = is_array($item) ? $item['description'] : (method_exists($item, 'getDescription') ? $item->getDescription() : '');
+                $qty = is_array($item) ? $item['qty'] : (method_exists($item, 'getQty') ? $item->getQty() : 0);
+                $unit = is_array($item) ? $item['unit'] : (method_exists($item, 'getUnit') ? $item->getUnit() : '');
+                $unitPrice = is_array($item) ? $item['unit_price'] : (method_exists($item, 'getUnitPrice') ? $item->getUnitPrice() : 0.0);
+
+                $this->jobItemRepository->createItem(
+                    $id,
+                    $description,
+                    $qty,
+                    $unit,
+                    $unitPrice
+                );
+            }
+        }
 
         return $this->getById($id);
     }

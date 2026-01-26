@@ -425,12 +425,28 @@ final class BusinessApp_Plugin
         $notes = isset($params['notes']) ? (string) $params['notes'] : '';
         $startDate = isset($params['start_date']) ? (string) $params['start_date'] : null;
         $endDate = isset($params['end_date']) ? (string) $params['end_date'] : null;
+        
+        $dynamicFields = isset($params['dynamic_fields']) ? $params['dynamic_fields'] : [];
+        $schemaSnapshot = isset($params['schema_snapshot']) ? $params['schema_snapshot'] : [];
+        $associatedEntityIds = isset($params['associated_entity_ids']) ? $params['associated_entity_ids'] : [];
+        $items = isset($params['items']) ? $params['items'] : [];
 
         if (empty($title)) {
             return new \WP_Error('missing_title', 'Title is required', ['status' => 400]);
         }
 
-        $job = $this->jobRepository->create($quoteId, $customerId, $title, $notes, $startDate, $endDate);
+        $job = $this->jobRepository->create(
+            $quoteId, 
+            $customerId, 
+            $title, 
+            $notes, 
+            $startDate, 
+            $endDate,
+            $dynamicFields,
+            $schemaSnapshot,
+            $associatedEntityIds,
+            $items
+        );
 
         return rest_ensure_response($this->job_to_array($job));
     }
@@ -650,10 +666,25 @@ final class BusinessApp_Plugin
             true
         );
 
+        // Get Active Schema
+        $businessTypeSettings = get_option('businessapp_settings_business_type', []);
+        $activeTypeId = isset($businessTypeSettings['business_type']) ? $businessTypeSettings['business_type'] : 'panel_beater';
+        $activeSchema = null;
+        $typeDef = $this->businessTypeRegistry->get($activeTypeId);
+        
+        if ($typeDef) {
+            $activeSchema = $typeDef->toArray();
+        }
+
         wp_localize_script('businessapp-admin-jobs', 'businessappData', [
             'root' => esc_url_raw(rest_url()),
             'nonce' => wp_create_nonce('wp_rest'),
             'adminUrl' => admin_url(),
+            'settings' => [
+                'business_type' => $businessTypeSettings,
+                'general' => get_option('businessapp_settings_general', []),
+            ],
+            'active_schema' => $activeSchema
         ]);
     }
 
