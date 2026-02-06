@@ -34,11 +34,15 @@ Invoicing is the final stage of the operational workflow. It formalizes the fina
 4.  **Void (Terminal)**
     *   The invoice was cancelled before payment.
 
+5.  **Partial (Intermediate)**
+    *   A payment has been received but the balance is > 0.
+    *   Added in Phase 5 (Payments).
+
 ## Financial Calculations
 *   **Subtotal:** Sum of all line items.
 *   **Tax:** Calculated based on the global tax rate setting at the time of invoice creation/update.
 *   **Total:** Subtotal + Tax.
-*   **Balance Due:** Total - Payments (for Phase 3, we might just toggle "Paid" status rather than tracking partial payments).
+*   **Balance Due:** Total - Sum(Payments). Updated in Phase 5 to support partial payments and tracking.
 
 ## Data Integrity
 *   **Snapshotting:** Like Quotes, Invoices must snapshot their customer details and settings at the time of issuance. Changing a global tax rate should not alter historical sent invoices.
