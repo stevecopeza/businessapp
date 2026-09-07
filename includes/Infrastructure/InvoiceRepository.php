@@ -160,6 +160,8 @@ class InvoiceRepository
             $totalAmount += $qty * $price;
         }
 
+        $publicToken = bin2hex(random_bytes(32));
+
         $data = [
             'job_id' => $jobId,
             'customer_id' => $customerId,
@@ -167,11 +169,12 @@ class InvoiceRepository
             'title' => $title,
             'notes' => $notes,
             'total_amount' => $totalAmount,
+            'public_token' => $publicToken,
             'created_at' => $now,
             'updated_at' => $now
         ];
 
-        $format = ['%d', '%d', '%s', '%s', '%s', '%f', '%s', '%s'];
+        $format = ['%d', '%d', '%s', '%s', '%s', '%f', '%s', '%s', '%s'];
 
         $this->wpdb->insert($this->tableName, $data, $format);
         $id = $this->wpdb->insert_id;

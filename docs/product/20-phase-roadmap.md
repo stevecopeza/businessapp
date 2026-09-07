@@ -16,13 +16,13 @@ Phase 3: Simple financial outputs (Complete)
 - [x] Invoicing based on completed jobs.
 - [x] Basic revenue reporting.
 
-Phase 4: Client Communication & Public Views (Complete)
+Phase 4: Client Communication & Public Views (In Progress)
 - [x] Public-facing Quote/Invoice views (HTML + Print CSS).
 - [x] Secure token generation.
-- [x] Email notifications via wp_mail.
-- [x] "View as Client" button for Admins.
+- [ ] Email notifications via wp_mail.
+- [ ] "View as Client" button for Admins.
 
-Phase 5: Payments & Integrations (Complete)
+Phase 5: Payments & Integrations (Mostly Complete)
 - [x] Stripe Payment Gateway integration.
 - [x] "Pay Now" button on public invoices.
 - [x] Payment entity and database table.

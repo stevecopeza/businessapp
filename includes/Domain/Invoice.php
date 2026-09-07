@@ -72,6 +72,26 @@ class Invoice
         return $this->title;
     }
 
+    public function setTitle($title)
+    {
+        $this->title = $title;
+    }
+
+    public function setNotes($notes)
+    {
+        $this->notes = $notes;
+    }
+
+    public function setLineItems($items)
+    {
+        $this->lineItems = $items;
+        // Recalculate total
+        $this->totalAmount = 0.0;
+        foreach ($items as $item) {
+            $this->totalAmount += $item->getTotal();
+        }
+    }
+
     public function getNotes()
     {
         return $this->notes;
