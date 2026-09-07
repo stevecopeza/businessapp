@@ -32,4 +32,9 @@ Once configured, invoices sent to customers will include a secure payment form.
 
 - **Backend**: PHP-based architecture following Domain-Driven Design (DDD) principles.
 - **Frontend**: jQuery-based Admin UI integration.
-- **Testing**: Includes a unit test suite (`tests/unit_tests.php`) for verifying core business logic.
+- **Testing**: PHPUnit. `composer test` runs the unit suite (`tests/unit/`), which drives the
+  repositories through a wpdb double. `composer test:integration` runs `tests/integration/`, which
+  installs WordPress onto a real, empty MySQL database, activates the plugin and exercises the
+  result — it needs a running MySQL server and wp-cli, and it fails rather than skips without them.
+  `composer test:all` runs both. A mocked wpdb answers success to every write, so only the
+  integration suite can see a missing table or a wrong column.
