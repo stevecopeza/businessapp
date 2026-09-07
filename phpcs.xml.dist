@@ -1,0 +1,146 @@
+<?xml version="1.0"?>
+<ruleset name="BusinessApp">
+    <description>BusinessApp coding standards — WordPress-Extra + WordPress-Docs + PHPCompatibilityWP</description>
+
+    <!-- What to scan -->
+    <file>includes/</file>
+    <file>businessapp.php</file>
+
+    <!-- Exclude generated / third-party directories -->
+    <exclude-pattern>vendor/*</exclude-pattern>
+    <exclude-pattern>node_modules/*</exclude-pattern>
+    <exclude-pattern>tests/*</exclude-pattern>
+
+    <!-- Only check PHP files -->
+    <arg name="extensions" value="php"/>
+
+    <!-- Show progress + colours -->
+    <arg value="ps"/>
+    <arg name="colors"/>
+
+    <!-- PHPCompatibilityWP — target PHP 8.1+, matching composer.json's require -->
+    <config name="testVersion" value="8.1-"/>
+
+    <rule ref="WordPress-Extra"/>
+    <rule ref="WordPress-Docs"/>
+    <rule ref="PHPCompatibilityWP"/>
+
+    <rule ref="WordPress.WP.I18n">
+        <properties>
+            <property name="text_domain" type="array">
+                <element value="businessapp"/>
+            </property>
+        </properties>
+    </rule>
+
+    <rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+        <properties>
+            <property name="prefixes" type="array">
+                <element value="businessapp"/>
+                <element value="BusinessApp"/>
+                <element value="BUSINESSAPP"/>
+            </property>
+        </properties>
+    </rule>
+
+    <!--
+        PSR-12 exclusions for includes/
+        ===============================
+        The includes/ tree (Domain, Infrastructure) is PSR-12 namespaced code:
+        4-space indent, camelCase methods and properties, PascalCase filenames,
+        no spaces inside parens, short array syntax, braces on a new line. These
+        conflict with WordPress Coding Standards by design — they are architectural
+        choices, not quality regressions. Mirrors pet/phpcs.xml.dist, which makes the
+        same exclusions for the same reason against src/.
+
+        Rules that protect CORRECTNESS (PreparedSQL, EscapeOutput, Capabilities,
+        PHPCompatibilityWP) are deliberately NOT excluded.
+    -->
+    <rule ref="Generic.WhiteSpace.DisallowSpaceIndent">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="Generic.Classes.OpeningBraceSameLine">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="Generic.Functions.OpeningFunctionBraceKernighanRitchie">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="Generic.Formatting.MultipleStatementAlignment">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="PEAR.Functions.FunctionCallSignature">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="Squiz.Functions.FunctionDeclarationArgumentSpacing">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="Squiz.Functions.MultiLineFunctionDeclaration">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.WhiteSpace.ControlStructureSpacing">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.WhiteSpace.CastStructureSpacing">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="Generic.WhiteSpace.ArbitraryParenthesesSpacing">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.Arrays.ArrayKeySpacingRestrictions">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.Arrays.ArrayDeclarationSpacing">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.Arrays.ArrayIndentation">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="NormalizedArrays.Arrays.ArrayBraceSpacing">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="Universal.Arrays.DisallowShortArraySyntax">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="Universal.Operators.DisallowShortTernary">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.PHP.YodaConditions">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="Squiz.Strings.DoubleQuoteUsage">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.WhiteSpace.OperatorSpacing">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.NamingConventions.ValidFunctionName">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.NamingConventions.ValidVariableName">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.Files.FileName">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="Squiz.Commenting.FileComment">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="Squiz.Commenting.ClassComment">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="Squiz.Commenting.FunctionComment">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="Squiz.Commenting.VariableComment">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="Squiz.Commenting.InlineComment">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+    <rule ref="Generic.Commenting.DocComment">
+        <exclude-pattern>*/includes/*</exclude-pattern>
+    </rule>
+</ruleset>

@@ -3,3 +3,5 @@ node_modules/
 vendor/
 *.log
 *.zip
+.phpcs.cache
+.phpunit.result.cache
