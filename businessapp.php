@@ -2762,10 +2762,10 @@ final class BusinessApp_Plugin
             echo '<tbody>';
             foreach ($items as $item) {
                 echo '<tr>';
-                echo '<td>' . esc_html($item['description']) . '</td>';
-                echo '<td>' . esc_html($item['qty']) . '</td>';
-                echo '<td>$' . esc_html(number_format((float) $item['unit_price'], 2)) . '</td>';
-                echo '<td>$' . esc_html(number_format((float) $item['total'], 2)) . '</td>';
+                echo '<td>' . esc_html($item->getDescription()) . '</td>';
+                echo '<td>' . esc_html((string) $item->getQty()) . '</td>';
+                echo '<td>$' . esc_html(number_format((float) $item->getUnitPrice(), 2)) . '</td>';
+                echo '<td>$' . esc_html(number_format((float) $item->getAmount(), 2)) . '</td>';
                 echo '</tr>';
             }
             echo '</tbody>';
@@ -2993,10 +2993,10 @@ final class BusinessApp_Plugin
             echo '<thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th>Total</th></tr></thead>';
             echo '<tbody>';
             foreach ($items as $item) {
-                $description = isset($item['description']) ? $item['description'] : '';
-                $qty = isset($item['qty']) ? (int) $item['qty'] : 1;
-                $unitPrice = isset($item['unit_price']) ? (float) $item['unit_price'] : 0.0;
-                $amount = isset($item['amount']) ? (float) $item['amount'] : 0.0;
+                $description = $item->getDescription();
+                $qty = (int) $item->getQty();
+                $unitPrice = (float) $item->getUnitPrice();
+                $amount = (float) $item->getAmount();
                 echo '<tr>';
                 echo '<td>' . esc_html($description) . '</td>';
                 echo '<td>' . esc_html((string) $qty) . '</td>';

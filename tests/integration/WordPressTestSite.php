@@ -48,11 +48,65 @@ final class WordPressTestSite {
 	private string $db_name;
 
 	/**
+	 * Loopback port the scratch site is served on. Chosen in the constructor rather
+	 * than at start-up because wp-config.php has to name it, and that file is written
+	 * during build_root().
+	 *
+	 * @var int
+	 */
+	private int $port;
+
+	/**
+	 * The `php -S` child serving the scratch site, or null while none is running.
+	 *
+	 * @var resource|null
+	 */
+	private $server;
+
+	/**
+	 * Absolute path of the web server's stderr log. A PHP fatal inside a page never
+	 * reaches the response body — wp_debug_mode() turns display_errors off whenever
+	 * WP_DEBUG is false — so this file is the only place a mid-page death is legible.
+	 *
+	 * @var string
+	 */
+	private string $server_log;
+
+	/**
 	 * Constructor. Reads configuration from the environment, defaulting to MAMP.
 	 */
 	public function __construct() {
-		$this->root    = self::env( 'BUSINESSAPP_TEST_WP_ROOT', sys_get_temp_dir() . '/businessapp-integration-wp' );
-		$this->db_name = self::env( 'BUSINESSAPP_TEST_DB_NAME', 'businessapp_integration_test' );
+		$this->root       = self::env( 'BUSINESSAPP_TEST_WP_ROOT', sys_get_temp_dir() . '/businessapp-integration-wp' );
+		$this->db_name    = self::env( 'BUSINESSAPP_TEST_DB_NAME', 'businessapp_integration_test' );
+		$this->port       = (int) self::env( 'BUSINESSAPP_TEST_PORT', (string) self::free_port() );
+		$this->server_log = sys_get_temp_dir() . '/businessapp-integration-server.log';
+	}
+
+	/**
+	 * Asks the operating system for a port nobody is listening on.
+	 *
+	 * @return int A port number.
+	 * @throws RuntimeException When no loopback port can be obtained.
+	 */
+	private static function free_port(): int {
+		$socket = @stream_socket_server( 'tcp://127.0.0.1:0', $errno, $errstr ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		if ( false === $socket ) {
+			throw new RuntimeException( "Cannot reserve a loopback port: {$errstr} ({$errno})" );
+		}
+
+		$name = stream_socket_get_name( $socket, false );
+		fclose( $socket );
+
+		return (int) substr( (string) $name, strrpos( (string) $name, ':' ) + 1 );
+	}
+
+	/**
+	 * The base URL the scratch site answers on.
+	 *
+	 * @return string An absolute http:// URL with no trailing slash.
+	 */
+	public function base_url(): string {
+		return 'http://127.0.0.1:' . $this->port;
 	}
 
 	/**
@@ -81,7 +135,7 @@ final class WordPressTestSite {
 			array(
 				'core',
 				'install',
-				'--url=http://businessapp.test',
+				'--url=' . $this->base_url(),
 				'--title=BusinessApp integration',
 				'--admin_user=admin',
 				'--admin_password=admin',
@@ -122,6 +176,137 @@ final class WordPressTestSite {
 		}
 
 		return $decoded;
+	}
+
+	/**
+	 * Serves the scratch WordPress over HTTP on the loopback port.
+	 *
+	 * WHY A REAL SERVER. A public invoice page is a document a signed-out customer
+	 * receives over HTTP. Rendering it in-process — setting $_GET and calling the
+	 * handler — proves the handler emits markup; it cannot produce a status line, and
+	 * a PHP fatal would abort the PHPUnit process instead of truncating a response.
+	 * The defect this suite exists to catch is precisely a page that starts, returns
+	 * 200, and then dies. Only a request over a socket can observe that shape.
+	 *
+	 * @return void
+	 * @throws RuntimeException When the server does not start answering.
+	 */
+	public function start_web_server(): void {
+		if ( null !== $this->server ) {
+			return;
+		}
+
+		file_put_contents( $this->server_log, '' );
+
+		$descriptors = array(
+			0 => array( 'file', '/dev/null', 'r' ),
+			1 => array( 'file', $this->server_log, 'a' ),
+			2 => array( 'file', $this->server_log, 'a' ),
+		);
+
+		$command = escapeshellarg( PHP_BINARY )
+			. ' -S 127.0.0.1:' . $this->port
+			. ' -t ' . escapeshellarg( $this->root );
+
+		$pipes        = array();
+		$this->server = proc_open( $command, $descriptors, $pipes );
+
+		if ( ! is_resource( $this->server ) ) {
+			$this->server = null;
+			throw new RuntimeException( "Could not start a web server: {$command}" );
+		}
+
+		for ( $attempt = 0; $attempt < 100; $attempt++ ) {
+			$probe = @fsockopen( '127.0.0.1', $this->port, $errno, $errstr, 0.2 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			if ( false !== $probe ) {
+				fclose( $probe );
+				return;
+			}
+			usleep( 100000 );
+		}
+
+		$this->stop_web_server();
+		throw new RuntimeException(
+			"The web server never answered on {$this->base_url()} after 10s.\n"
+			. $this->server_output()
+		);
+	}
+
+	/**
+	 * Stops the web server if one is running.
+	 *
+	 * @return void
+	 */
+	public function stop_web_server(): void {
+		if ( null === $this->server ) {
+			return;
+		}
+
+		proc_terminate( $this->server );
+		proc_close( $this->server );
+		$this->server = null;
+	}
+
+	/**
+	 * Fetches a path from the scratch site.
+	 *
+	 * Errors are NOT treated as failures of the fetch: a 404 or a 500 is an
+	 * observation this suite needs to be able to assert on, so both the status and
+	 * whatever body arrived are returned.
+	 *
+	 * @param string $path Path and query string, beginning with a slash.
+	 * @return array{status:int, body:string} What the server answered.
+	 * @throws RuntimeException When no server is running or the socket fails outright.
+	 */
+	public function get( string $path ): array {
+		if ( null === $this->server ) {
+			throw new RuntimeException( 'start_web_server() must be called before get().' );
+		}
+
+		$context = stream_context_create(
+			array(
+				'http' => array(
+					'method'        => 'GET',
+					'ignore_errors' => true,
+					'timeout'       => 30,
+					'header'        => "Accept: text/html\r\n",
+				),
+			)
+		);
+
+		$body = @file_get_contents( $this->base_url() . $path, false, $context ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+
+		if ( false === $body ) {
+			throw new RuntimeException(
+				"GET {$path} did not complete.\n" . $this->server_output()
+			);
+		}
+
+		$status = 0;
+		foreach ( ( $http_response_header ?? array() ) as $line ) {
+			if ( 1 === preg_match( '#^HTTP/\S+\s+(\d{3})#', $line, $matches ) ) {
+				$status = (int) $matches[1];
+			}
+		}
+
+		return array(
+			'status' => $status,
+			'body'   => (string) $body,
+		);
+	}
+
+	/**
+	 * Everything the web server has written to its log so far.
+	 *
+	 * This is where a mid-page PHP fatal is legible; the response body never carries
+	 * one, because WordPress turns display_errors off when WP_DEBUG is false.
+	 *
+	 * @return string The log contents, labelled.
+	 */
+	public function server_output(): string {
+		$text = is_file( $this->server_log ) ? (string) file_get_contents( $this->server_log ) : '';
+
+		return "--- web server log ({$this->server_log}) ---\n" . $text;
 	}
 
 	/**
@@ -219,6 +404,10 @@ final class WordPressTestSite {
 		$lines[] = "define( 'WP_DEBUG_DISPLAY', false );";
 		$lines[] = "define( 'AUTOMATIC_UPDATER_DISABLED', true );";
 		$lines[] = "define( 'WP_HTTP_BLOCK_EXTERNAL', true );";
+		// Defined rather than left to the options table so redirect_canonical cannot
+		// bounce a request off the loopback port before template_redirect runs.
+		$lines[] = sprintf( "define( 'WP_HOME', '%s' );", $this->base_url() );
+		$lines[] = sprintf( "define( 'WP_SITEURL', '%s' );", $this->base_url() );
 		$lines[] = "\$table_prefix = 'wp_';";
 		$lines[] = "if ( ! defined( 'ABSPATH' ) ) { define( 'ABSPATH', __DIR__ . '/' ); }";
 		$lines[] = "require_once ABSPATH . 'wp-settings.php';";
