@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('BUSINESSAPP_DB_VERSION', '10');
+define('BUSINESSAPP_DB_VERSION', '11');
 
 require_once __DIR__ . '/includes/Domain/Quote.php';
 require_once __DIR__ . '/includes/Domain/QuoteItem.php';
@@ -919,6 +919,43 @@ final class BusinessApp_Plugin
             KEY job_id (job_id)
         ) {$charsetCollate};";
 
+        // The columns InvoiceRepository actually writes -- save(), create(), update() and
+        // mapRowToInvoice(). doc 63 additionally specifies issue_date, due_date, subtotal,
+        // tax_total and `total`; no code reads or writes any of them, so they are a separate
+        // card rather than five columns nothing ever fills.
+        $invoicesTable = $wpdb->prefix . 'businessapp_invoices';
+        $invoicesSql = "CREATE TABLE {$invoicesTable} (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            job_id BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
+            customer_id BIGINT(20) UNSIGNED NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'draft',
+            title TEXT NOT NULL,
+            notes TEXT NOT NULL,
+            total_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+            public_token VARCHAR(64) NOT NULL DEFAULT '',
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            PRIMARY KEY  (id),
+            KEY job_id (job_id),
+            KEY customer_id (customer_id)
+        ) {$charsetCollate};";
+
+        // The columns InvoiceItemRepository::createItem() writes, plus the id it reads back.
+        $invoiceItemsTable = $wpdb->prefix . 'businessapp_invoice_items';
+        $invoiceItemsSql = "CREATE TABLE {$invoiceItemsTable} (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            invoice_id BIGINT(20) UNSIGNED NOT NULL,
+            description TEXT NOT NULL,
+            qty INT NOT NULL DEFAULT 1,
+            unit VARCHAR(50) NOT NULL DEFAULT '',
+            unit_price DECIMAL(10,2) NOT NULL DEFAULT 0,
+            amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+            type VARCHAR(50) NOT NULL DEFAULT 'labor',
+            position INT NOT NULL DEFAULT 1,
+            PRIMARY KEY  (id),
+            KEY invoice_id (invoice_id)
+        ) {$charsetCollate};";
+
         $paymentsTable = $wpdb->prefix . 'businessapp_payments';
         $paymentsSql = "CREATE TABLE {$paymentsTable} (
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -943,6 +980,8 @@ final class BusinessApp_Plugin
         dbDelta($entitiesSql);
         dbDelta($jobsSql);
         dbDelta($jobItemsSql);
+        dbDelta($invoicesSql);
+        dbDelta($invoiceItemsSql);
         dbDelta($paymentsSql);
     }
 

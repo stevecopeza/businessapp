@@ -31,6 +31,10 @@ $businessapp_report = array(
 	'prefix'          => $wpdb->prefix,
 	'plugin_tables'   => array(),
 	'db_version'      => get_option( 'businessapp_db_version' ),
+	// What the plugin DECLARES, so the control can assert that what was persisted
+	// equals it rather than a literal typed into the test. A literal here would go
+	// red on every legitimate schema bump, which is version-coupling, not a guard.
+	'declared_db_version' => defined( 'BUSINESSAPP_DB_VERSION' ) ? BUSINESSAPP_DB_VERSION : null,
 	'invoice_created' => null,
 	'invoice_error'   => null,
 	'invoice_rows'    => null,
